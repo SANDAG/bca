@@ -331,7 +331,7 @@ CREATE TABLE [db_meta].[schema_change_log] (
 	CONSTRAINT [pk_schema_change_log] PRIMARY KEY CLUSTERED ([id])
 	) 
 ON 
-	[reference_fg]
+	[fg_main]
 WITH 
 	(DATA_COMPRESSION = PAGE);
 GO
