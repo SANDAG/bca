@@ -27,10 +27,22 @@ GO
 -- in the abm database
 -- removes dependency of bca tool on the abm database name
 -- dependency on abm database structure remains
+IF OBJECT_ID('dimension.household', 'sn') IS NOT NULL
+	DROP SYNONYM [dimension].[household]
+GO
+CREATE SYNONYM [dimension].[household] FOR $(abm_db_name).[dimension].[household]
+GO
+
 IF OBJECT_ID('dimension.model_trip', 'sn') IS NOT NULL
 	DROP SYNONYM [dimension].[model_trip]
 GO
 CREATE SYNONYM [dimension].[model_trip] FOR $(abm_db_name).[dimension].[model_trip]
+GO
+
+IF OBJECT_ID('dimension.person', 'sn') IS NOT NULL
+	DROP SYNONYM [dimension].[person]
+GO
+CREATE SYNONYM [dimension].[person] FOR $(abm_db_name).[dimension].[person]
 GO
 
 IF OBJECT_ID('fact.person_trip', 'sn') IS NOT NULL
