@@ -47,9 +47,9 @@ AS
 -- base and build scenario for total households, Community of Concern
 -- households, and each element that indicates a Community of Concern
 -- household (seniors, minorities, low income).
---	[dbo].[auto_ownership_comparison]
---	[dbo].[auto_ownership_processor]
---	[dbo].[auto_ownership_summary]
+--	[dbo].[run_auto_ownership_comparison]
+--	[dbo].[run_auto_ownership_processor]
+--	[dbo].[run_auto_ownership_summary]
 -- ===========================================================================
 BEGIN
 	with [households] AS (
@@ -130,6 +130,107 @@ GO
 -- Add metadata for [bca].[fn_auto_ownership]
 EXECUTE [db_meta].[add_xp] 'bca.fn_auto_ownership', 'SUBSYSTEM', 'bca'
 EXECUTE [db_meta].[add_xp] 'bca.fn_auto_ownership', 'MS_Description', 'function to return auto ownership results for base and build scenarios'
+GO
+
+
+
+
+-- Create demographics table valued function
+IF  EXISTS (SELECT * FROM sys.objects WHERE object_id = OBJECT_ID(N'[bca].[fn_demographics]') AND type in (N'FN', N'IF', N'TF', N'FS', N'FT'))
+DROP FUNCTION [bca].[fn_demographics]
+GO
+
+CREATE FUNCTION [bca].[fn_demographics]
+(
+	@scenario_id_base integer,
+	@scenario_id_build integer
+)
+RETURNS @tbl_demographics TABLE
+(
+	[base_persons] integer NOT NULL
+	,[build_persons] integer NOT NULL
+	,[base_persons_coc] integer NOT NULL
+	,[build_persons_coc] integer NOT NULL
+	,[base_persons_senior] integer NOT NULL
+	,[build_persons_senior] integer NOT NULL
+	,[base_persons_minority] integer NOT NULL
+	,[build_persons_minority] integer NOT NULL
+	,[base_persons_low_income] integer NOT NULL
+	,[build_persons_low_income] integer NOT NULL
+)
+AS
+
+-- ===========================================================================
+-- Author:		RSG and Gregor Schroeder
+-- Create date: 7/2/2018
+-- Description:	Translation and combination of the bca tool stored procedures
+-- for the new abm database listed below. Given two input scenario_id values,
+-- returns table of total base and build scenario persons and total persons
+-- within each Community of Concern (seniors, minorities, low income).
+--	[dbo].[run_demographics_processor]
+--	[dbo].[run_demographics_summary]
+-- ===========================================================================
+BEGIN
+
+with [person_summary] AS (
+	SELECT
+		[person].[scenario_id]
+		,SUM([person].[weight_person]) AS [persons]
+		,SUM(CASE	WHEN [person].[age] >= 75 THEN [person].[weight_person]
+					WHEN [person].[race] IN ('Some Other Race Alone',
+												'Asian Alone',
+												'Black or African American Alone',
+												'Two or More Major Race Groups',
+												'Native Hawaiian and Other Pacific Islander Alone',
+												'American Indian and Alaska Native Tribes specified; or American Indian or Alaska Native, not specified and no other races')
+							OR [person].[hispanic] = 'Hispanic' THEN [person].[weight_person]
+					WHEN [household].[poverty] <= 2 THEN [person].[weight_person]
+					ELSE 0 END) AS [persons_coc]
+		,SUM(CASE WHEN [person].[age] >= 75 THEN [person].[weight_person] ELSE 0 END) AS [persons_senior]
+		,SUM(CASE	WHEN [person].[race] IN ('Some Other Race Alone',
+												'Asian Alone',
+												'Black or African American Alone',
+												'Two or More Major Race Groups',
+												'Native Hawaiian and Other Pacific Islander Alone',
+												'American Indian and Alaska Native Tribes specified; or American Indian or Alaska Native, not specified and no other races')
+							OR [person].[hispanic] = 'Hispanic' THEN [person].[weight_person]
+						ELSE 0 END) AS [persons_minority]
+		,SUM(CASE WHEN [household].[poverty] <= 2 THEN [person].[weight_person] ELSE 0 END) AS [persons_low_income]
+	FROM
+		[dimension].[person]
+	INNER JOIN
+		[dimension].[household]
+	ON
+		[person].[scenario_id] = [household].[scenario_id]
+		AND [person].[household_id] = [household].[household_id]
+	WHERE
+		[person].[scenario_id] IN (@scenario_id_base, @scenario_id_build)
+		AND [household].[scenario_id] IN (@scenario_id_base, @scenario_id_build)
+		AND [person].[weight_person] > 0
+		AND [household].[weight_household] > 0
+	GROUP BY
+		[person].[scenario_id])
+INSERT INTO @tbl_demographics
+SELECT
+	SUM(CASE WHEN [scenario_id] = @scenario_id_base THEN [persons] ELSE 0 END) AS [base_persons]
+	,SUM(CASE WHEN [scenario_id] = @scenario_id_build THEN [persons] ELSE 0 END) AS [build_persons]
+	,SUM(CASE WHEN [scenario_id] = @scenario_id_base THEN [persons_coc] ELSE 0 END) AS [base_persons_coc]
+	,SUM(CASE WHEN [scenario_id] = @scenario_id_build THEN [persons_coc] ELSE 0 END) AS [build_persons_coc]
+	,SUM(CASE WHEN [scenario_id] = @scenario_id_base THEN [persons_senior] ELSE 0 END) AS [base_persons_senior]
+	,SUM(CASE WHEN [scenario_id] = @scenario_id_build THEN [persons_senior] ELSE 0 END) AS [build_persons_senior]
+	,SUM(CASE WHEN [scenario_id] = @scenario_id_base THEN [persons_minority] ELSE 0 END) AS [base_persons_minority]
+	,SUM(CASE WHEN [scenario_id] = @scenario_id_build THEN [persons_minority] ELSE 0 END) AS [build_persons_minority]
+	,SUM(CASE WHEN [scenario_id] = @scenario_id_base THEN [persons_low_income] ELSE 0 END) AS [base_persons_low_income]
+	,SUM(CASE WHEN [scenario_id] = @scenario_id_build THEN [persons_low_income] ELSE 0 END) AS [build_persons_low_income]
+FROM
+	[person_summary]
+  RETURN
+END
+GO
+
+-- Add metadata for [bca].[fn_demographics]
+EXECUTE [db_meta].[add_xp] 'bca.fn_demographics', 'SUBSYSTEM', 'bca'
+EXECUTE [db_meta].[add_xp] 'bca.fn_demographics', 'MS_Description', 'function to return demographic results for base and build scenarios'
 GO
 
 
