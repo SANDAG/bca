@@ -33,6 +33,37 @@ GO
 CREATE SYNONYM [dimension].[household] FOR $(abm_db_name).[dimension].[household]
 GO
 
+IF OBJECT_ID('dimension.hwy_link', 'sn') IS NOT NULL
+	DROP SYNONYM [dimension].[hwy_link]
+GO
+CREATE SYNONYM [dimension].[hwy_link] FOR $(abm_db_name).[dimension].[hwy_link]
+GO
+
+IF OBJECT_ID('dimension.hwy_link_ab_tod', 'sn') IS NOT NULL
+	DROP SYNONYM [dimension].[hwy_link_ab_tod]
+GO
+CREATE SYNONYM [dimension].[hwy_link_ab_tod] FOR $(abm_db_name).[dimension].[hwy_link_ab_tod]
+GO
+
+IF OBJECT_ID('fact.hwy_flow', 'sn') IS NOT NULL
+	DROP SYNONYM [fact].[hwy_flow]
+GO
+CREATE SYNONYM [fact].[hwy_flow] FOR $(abm_db_name).[fact].[hwy_flow]
+GO
+
+
+IF OBJECT_ID('fact.hwy_flow_mode', 'sn') IS NOT NULL
+	DROP SYNONYM [fact].[hwy_flow_mode]
+GO
+CREATE SYNONYM [fact].[hwy_flow_mode] FOR $(abm_db_name).[fact].[hwy_flow_mode]
+GO
+
+IF OBJECT_ID('dimension.mode', 'sn') IS NOT NULL
+	DROP SYNONYM [dimension].[mode]
+GO
+CREATE SYNONYM [dimension].[mode] FOR $(abm_db_name).[dimension].[mode]
+GO
+
 IF OBJECT_ID('dimension.model_trip', 'sn') IS NOT NULL
 	DROP SYNONYM [dimension].[model_trip]
 GO

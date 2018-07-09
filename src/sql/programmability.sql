@@ -236,6 +236,222 @@ GO
 
 
 
+-- Create highway link table valued function
+IF  EXISTS (SELECT * FROM sys.objects WHERE object_id = OBJECT_ID(N'[bca].[fn_highway_link]') AND type in (N'FN', N'IF', N'TF', N'FS', N'FT'))
+DROP FUNCTION [bca].[fn_highway_link]
+GO
+
+CREATE FUNCTION [bca].[fn_highway_link]
+(
+	@scenario_id_base integer,
+	@scenario_id_build integer,
+	@reliability_ratio float, -- TODO requires comment
+	@crash_cost_pdo float, -- TODO requires comment
+	@crash_cost_injury float, -- TODO requires comment
+	@crash_cost_fatal float, -- TODO requires comment
+	@crash_rate_pdo float, -- TODO requires comment
+	@crash_rate_injury float, -- TODO requires comment
+	@crash_rate_fatal float, -- TODO requires comment
+	@voc_auto float, -- TODO requires comment
+	@voc_lhdt float, -- TODO requires comment
+	@voc_mhdt float, -- TODO requires comment
+	@voc_hhdt float, -- TODO requires comment
+	@vor_auto float, -- TODO requires comment
+	@vor_lhdt float, -- TODO requires comment
+	@vor_mhdt float, -- TODO requires comment
+	@vor_hhdt float -- TODO requires comment
+)
+RETURNS @tbl_highway_link TABLE
+(
+	[cost_change_op_auto] float NOT NULL,
+	[cost_change_op_lhdt] float NOT NULL,
+	[cost_change_op_mhdt] float NOT NULL,
+	[cost_change_op_hhdt] float NOT NULL,
+	[cost_change_rel_auto] float NOT NULL,
+	[cost_change_rel_lhdt] float NOT NULL,
+	[cost_change_rel_mhdt] float NOT NULL,
+	[cost_change_rel_hhdt] float NOT NULL,
+	[cost_change_crashes_pdo] float NOT NULL,
+	[cost_change_crashes_injury] float NOT NULL,
+	[cost_change_crashes_fatal] float NOT NULL,
+	[base_cost_rel] float NOT NULL,
+	[build_cost_rel] float NOT NULL
+)
+AS
+
+-- ===========================================================================
+-- Author:		RSG and Gregor Schroeder
+-- Create date: 7/09/2018
+-- Description:	Translation and combination of the bca tool stored procedures
+-- for the new abm database listed below. Given two input scenario_id values,
+-- returns table of (TODO of what?) segmented by base and build
+-- scenarios loaded highway network.
+--	[dbo].[run_link_comparison]
+--	[dbo].[run_link_processor]
+--	[dbo].[run_link_summary]
+-- ===========================================================================
+BEGIN
+
+	-- get link volumes by ab and tod for autos and trucks (lht, mht, hht)
+	-- calculate link free flow speed by ab and tod
+	-- begin caluclation of link vehicle delay per mile by ab and tod
+	with [flow_ab_tod] AS (
+		SELECT
+			[hwy_flow].[scenario_id]
+			,CASE	WHEN 1.0274 * POWER([hwy_flow].[time] / ([hwy_link_ab_tod].[tm]), 1.2204) > 3.0
+					THEN 3.0
+					ELSE 1.0274 * POWER([hwy_flow].[time] / ([hwy_link_ab_tod].[tm]), 1.2204)
+					END AS [ttim2] -- begin caluclation of link vehicle delay per mile by ab and tod
+			,[hwy_link].[length_mile] / ([hwy_link_ab_tod].[tm] / 60) AS [speed_free_flow]
+			,[hwy_flow].[flow] * [hwy_link].[length_mile] AS [vmt_total]
+			,[hwy_flow_mode_agg].[flow_auto] * [hwy_link].[length_mile] AS [vmt_auto]
+			,[hwy_flow_mode_agg].[flow_lhdt] * [hwy_link].[length_mile] AS [vmt_lhdt]
+			,[hwy_flow_mode_agg].[flow_mhdt] * [hwy_link].[length_mile] AS [vmt_mhdt]
+			,[hwy_flow_mode_agg].[flow_hhdt] * [hwy_link].[length_mile] AS [vmt_hhdt]
+
+		FROM
+			[fact].[hwy_flow]
+		INNER JOIN
+			[dimension].[hwy_link]
+		ON
+			[hwy_flow].[scenario_id] = [hwy_link].[scenario_id]
+			AND [hwy_flow].[hwy_link_id] = [hwy_link].[hwy_link_id]
+		INNER JOIN
+			[dimension].[hwy_link_ab_tod]
+		ON
+			[hwy_flow].[scenario_id] = [hwy_link_ab_tod].[scenario_id]
+			AND [hwy_flow].[hwy_link_ab_tod_id] = [hwy_link_ab_tod].[hwy_link_ab_tod_id]
+		INNER JOIN (
+			SELECT
+				[scenario_id]
+				,[hwy_link_ab_tod_id]
+				,SUM(CASE	WHEN [mode].[mode_description] IN ('Drive Alone Non-Toll',
+															   'Drive Alone Toll Eligible',
+															   'Shared Ride 2 Non-Toll',
+															   'Shared Ride 2 Toll Eligible',
+															   'Shared Ride 3 Non-Toll',
+															   'Shared Ride 3 Toll Eligible')
+							THEN [flow]
+							ELSE 0 END) AS [flow_auto]
+				,SUM(CASE	WHEN [mode].[mode_description] IN ('Light Heavy Duty Truck (Non-Toll)',
+															   'Light Heavy Duty Truck (Toll)')
+							THEN [flow]
+							ELSE 0 END) AS [flow_lhdt]
+				,SUM(CASE	WHEN [mode].[mode_description] IN ('Medium Heavy Duty Truck (Non-Toll)',
+															   'Medium Heavy Duty Truck (Toll)')
+							THEN [flow]
+							ELSE 0 END) AS [flow_mhdt]
+				,SUM(CASE	WHEN [mode].[mode_description] IN ('Heavy Heavy Duty Truck (Non-Toll)',
+															   'Heavy Heavy Duty Truck (Toll)')
+							THEN [flow]
+							ELSE 0 END) AS [flow_hhdt]
+			FROM
+				[fact].[hwy_flow_mode]
+			INNER JOIN
+				[dimension].[mode]
+			ON
+				[hwy_flow_mode].[mode_id] = [mode].[mode_id]
+			WHERE
+				[hwy_flow_mode].[scenario_id] IN (@scenario_id_base, @scenario_id_build)
+				AND [hwy_flow_mode].[flow] > 0
+			GROUP BY
+				[hwy_flow_mode].[scenario_id]
+				,[hwy_flow_mode].[hwy_link_ab_tod_id]) AS [hwy_flow_mode_agg]
+		ON
+			[hwy_flow].[scenario_id] = [hwy_flow_mode_agg].[scenario_id]
+			AND [hwy_flow].[hwy_link_ab_tod_id] = [hwy_flow_mode_agg].[hwy_link_ab_tod_id]
+		WHERE
+			[hwy_flow].[scenario_id] IN (@scenario_id_base, @scenario_id_build)
+			AND [hwy_link].[scenario_id] IN (@scenario_id_base, @scenario_id_build)
+			AND [hwy_link_ab_tod].[scenario_id] IN (@scenario_id_base, @scenario_id_build)
+			AND [hwy_flow].[flow] > 0),
+	[calc_ab_tod] AS (
+		SELECT
+			[scenario_id]
+			,[speed_free_flow]
+			,[vmt_total]
+			,[vmt_auto]
+			,[vmt_lhdt]
+			,[vmt_mhdt]
+			,[vmt_hhdt]
+			,(POWER([ttim2], 0.8601) + @reliability_ratio *
+				((1 + 2.1406 * LOG([ttim2])) - POWER([ttim2], 0.8601))) /
+				[speed_free_flow] - (1 / [speed_free_flow]) AS [delay_per_mile]
+		FROM
+			[flow_ab_tod]),
+	[summary] AS (
+		SELECT
+			[scenario_id]
+			,@voc_auto * SUM([vmt_auto]) AS [cost_op_auto]
+			,@voc_lhdt * SUM([vmt_lhdt]) AS [cost_op_lhdt]
+			,@voc_mhdt * SUM([vmt_mhdt]) AS [cost_op_mhdt]
+			,@voc_hhdt * SUM([vmt_hhdt]) AS [cost_op_hhdt]
+			,@vor_auto * SUM(([delay_per_mile] * [vmt_auto]) / 60) AS [cost_rel_auto]
+			,@vor_lhdt * SUM(([delay_per_mile] * [vmt_lhdt]) / 60) AS [cost_rel_lhdt]
+			,@vor_mhdt * SUM(([delay_per_mile] * [vmt_mhdt]) / 60) AS [cost_rel_mhdt]
+			,@vor_hhdt * SUM(([delay_per_mile] * [vmt_hhdt]) / 60) AS [cost_rel_hhdt]
+			,@crash_rate_pdo * @crash_cost_pdo * SUM([vmt_total]) AS [crashes_pdo]
+			,@crash_rate_injury * @crash_cost_injury * SUM([vmt_total]) AS [crashes_injury]
+			,@crash_rate_fatal * @crash_cost_fatal * SUM([vmt_total]) AS [crashes_fatal]
+		FROM
+			[calc_ab_tod]
+		GROUP BY
+			[scenario_id]),
+	[summary_wide] AS (
+		SELECT
+			SUM(CASE WHEN [scenario_id] = @scenario_id_base THEN [cost_op_auto] ELSE 0 END) AS [base_cost_op_auto]
+			,SUM(CASE WHEN [scenario_id] = @scenario_id_build THEN [cost_op_auto] ELSE 0 END) AS [build_cost_op_auto]
+			,SUM(CASE WHEN [scenario_id] = @scenario_id_base THEN [cost_op_lhdt] ELSE 0 END) AS [base_cost_op_lhdt]
+			,SUM(CASE WHEN [scenario_id] = @scenario_id_build THEN [cost_op_lhdt] ELSE 0 END) AS [build_cost_op_lhdt]
+			,SUM(CASE WHEN [scenario_id] = @scenario_id_base THEN [cost_op_mhdt] ELSE 0 END) AS [base_cost_op_mhdt]
+			,SUM(CASE WHEN [scenario_id] = @scenario_id_build THEN [cost_op_mhdt] ELSE 0 END) AS [build_cost_op_mhdt]
+			,SUM(CASE WHEN [scenario_id] = @scenario_id_base THEN [cost_op_hhdt] ELSE 0 END) AS [base_cost_op_hhdt]
+			,SUM(CASE WHEN [scenario_id] = @scenario_id_build THEN [cost_op_hhdt] ELSE 0 END) AS [build_cost_op_hhdt]
+			,SUM(CASE WHEN [scenario_id] = @scenario_id_base THEN [cost_rel_auto] ELSE 0 END) AS [base_cost_rel_auto]
+			,SUM(CASE WHEN [scenario_id] = @scenario_id_build THEN [cost_rel_auto] ELSE 0 END) AS [build_cost_rel_auto]
+			,SUM(CASE WHEN [scenario_id] = @scenario_id_base THEN [cost_rel_lhdt] ELSE 0 END) AS [base_cost_rel_lhdt]
+			,SUM(CASE WHEN [scenario_id] = @scenario_id_build THEN [cost_rel_lhdt] ELSE 0 END) AS [build_cost_rel_lhdt]
+			,SUM(CASE WHEN [scenario_id] = @scenario_id_base THEN [cost_rel_mhdt] ELSE 0 END) AS [base_cost_rel_mhdt]
+			,SUM(CASE WHEN [scenario_id] = @scenario_id_build THEN [cost_rel_mhdt] ELSE 0 END) AS [build_cost_rel_mhdt]
+			,SUM(CASE WHEN [scenario_id] = @scenario_id_base THEN [cost_rel_hhdt] ELSE 0 END) AS [base_cost_rel_hhdt]
+			,SUM(CASE WHEN [scenario_id] = @scenario_id_build THEN [cost_rel_hhdt] ELSE 0 END) AS [build_cost_rel_hhdt]
+			,SUM(CASE WHEN [scenario_id] = @scenario_id_base THEN [crashes_pdo] ELSE 0 END) AS [base_crashes_pdo]
+			,SUM(CASE WHEN [scenario_id] = @scenario_id_build THEN [crashes_pdo] ELSE 0 END) AS [build_crashes_pdo]
+			,SUM(CASE WHEN [scenario_id] = @scenario_id_base THEN [crashes_injury] ELSE 0 END) AS [base_crashes_injury]
+			,SUM(CASE WHEN [scenario_id] = @scenario_id_build THEN [crashes_injury] ELSE 0 END) AS [build_crashes_injury]
+			,SUM(CASE WHEN [scenario_id] = @scenario_id_base THEN [crashes_fatal] ELSE 0 END) AS [base_crashes_fatal]
+			,SUM(CASE WHEN [scenario_id] = @scenario_id_build THEN [crashes_fatal] ELSE 0 END) AS [build_crashes_fatal]
+		FROM
+			[summary])
+	INSERT INTO @tbl_highway_link
+	SELECT
+		[base_cost_op_auto] - [build_cost_op_auto] AS [cost_change_op_auto]
+		,[base_cost_op_lhdt] - [build_cost_op_lhdt] AS [cost_change_op_lhdt]
+		,[base_cost_op_mhdt] - [build_cost_op_mhdt] AS [cost_change_op_mhdt]
+		,[base_cost_op_hhdt] - [build_cost_op_hhdt] AS [cost_change_op_hhdt]
+		,[base_cost_rel_auto] - [build_cost_rel_auto] AS [cost_change_rel_auto]
+		,[base_cost_rel_lhdt] - [build_cost_rel_lhdt] AS [cost_change_rel_lhdt]
+		,[base_cost_rel_mhdt] - [build_cost_rel_mhdt] AS [cost_change_rel_mhdt]
+		,[base_cost_rel_hhdt] - [build_cost_rel_hhdt] AS [cost_change_rel_hhdt]
+		,[base_crashes_pdo] - [build_crashes_pdo] AS [cost_change_crashes_pdo]
+		,[base_crashes_injury] - [build_crashes_injury] AS [cost_change_crashes_injury]
+		,[base_crashes_fatal] - [build_crashes_fatal] AS [cost_change_crashes_fatal]
+		,[base_cost_rel_auto] + [base_cost_rel_lhdt] + [base_cost_rel_mhdt] + [base_cost_rel_hhdt] AS [base_cost_rel]
+		,[build_cost_rel_auto] + [build_cost_rel_lhdt] + [build_cost_rel_mhdt] + [build_cost_rel_hhdt] AS [build_cost_rel]
+	FROM
+		[summary_wide]
+	RETURN
+END
+GO
+
+-- Add metadata for [bca].[fn_highway_link]
+EXECUTE [db_meta].[add_xp] 'bca.fn_highway_link', 'SUBSYSTEM', 'bca'
+EXECUTE [db_meta].[add_xp] 'bca.fn_highway_link', 'MS_Description', 'function to return loaded highway network results for base and build scenarios'
+GO
+
+
+
+
 -- Create aggregate_toll table valued function
 IF  EXISTS (SELECT * FROM sys.objects WHERE object_id = OBJECT_ID(N'[bca].[fn_toll_cost]') AND type in (N'FN', N'IF', N'TF', N'FS', N'FT'))
 DROP FUNCTION [bca].[fn_toll_cost]
