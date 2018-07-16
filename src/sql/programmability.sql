@@ -152,6 +152,11 @@ BEGIN
 					ELSE 0
 					END) AS [benefit_vot_truck]
 	FROM (
+		-- calculate trip value of time costs for build trips using build travel times
+		-- calculate trip value of time costs for build trips using base skims base travel times
+			-- note there are build trips without base skims built from base trips
+			-- calculate the cost per trip where only build trips with base skims are included
+			-- then multiply this cost per trip by the total number of build trips
 		SELECT
 			[trips_build].[model_trip_description]
 			,SUM([trips_build].[weight_trip] * [trips_build].[time_total] *
@@ -160,12 +165,19 @@ BEGIN
 							WHEN [trips_build].[model_trip_description] = 'Truck'
 							THEN @vot_truck / 60
 							ELSE NULL END) AS [build_cost_vot]
-			,SUM([trips_build].[weight_trip] * [auto_skims_base].[time_total] *
-					CASE	WHEN [trips_build].[model_trip_description] = 'Commercial Vehicle'
-							THEN @vot_ctm / 60
-							WHEN [trips_build].[model_trip_description] = 'Truck'
-							THEN @vot_truck / 60
-							ELSE NULL END) AS [base_cost_vot]
+			,-- trip value of time cost for build trip with base skims
+				(SUM([trips_build].[weight_trip] * ISNULL([auto_skims_base].[time_total], 0) *
+						CASE	WHEN [trips_build].[model_trip_description] = 'Commercial Vehicle'
+								THEN @vot_ctm / 60
+								WHEN [trips_build].[model_trip_description] = 'Truck'
+								THEN @vot_truck / 60
+								ELSE NULL END)
+				-- divided by number of build trips with base skims
+				/ SUM(CASE	WHEN [auto_skims_base].[time_total] IS NOT NULL
+							THEN [trips_build].[weight_trip]
+							ELSE 0 END))
+				-- multiplied by the total number of build trips
+				* SUM([trips_build].[weight_trip]) AS [base_cost_vot]
 		FROM (
 			-- get build trip list for Commercial Vehicle and Truck models
 			-- to be matched with skims from base scenario
@@ -221,9 +233,9 @@ BEGIN
 			WHERE
 				[person_trip].[scenario_id] = @scenario_id_build
 				AND [model_trip].[model_trip_description] IN ('Commercial Vehicle',
-															  'Truck') -- Commercial Vehicle and Truck models only, these models use auto modes only
+																'Truck') -- Commercial Vehicle and Truck models only, these models use auto modes only
 		) AS [trips_build]
-		INNER JOIN (
+		LEFT OUTER JOIN (
 			-- create base scenario auto skims from person trips table
 			-- skims are segmented by taz-taz, assignment mode, value of time bin, and ABM five time of day
 			-- if a trip is not present in the person trips table corresponding to a skim then the skim
