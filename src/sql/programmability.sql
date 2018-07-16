@@ -13,6 +13,333 @@ GO
 
 
 
+-- Create aggregate_toll table valued function
+IF  EXISTS (SELECT * FROM sys.objects WHERE object_id = OBJECT_ID(N'[bca].[fn_aggregate_toll]') AND type in (N'FN', N'IF', N'TF', N'FS', N'FT'))
+DROP FUNCTION [bca].[fn_aggregate_toll]
+GO
+
+CREATE FUNCTION [bca].[fn_aggregate_toll]
+(
+	@scenario_id_base integer,
+	@scenario_id_build integer
+)
+RETURNS @tbl_toll_cost TABLE
+(
+	[base_toll_ctm] float NOT NULL
+	,[build_toll_ctm] float NOT NULL
+	,[base_toll_truck] float NOT NULL
+	,[build_toll_truck] float NOT NULL
+)
+AS
+
+-- ===========================================================================
+-- Author:		RSG and Gregor Schroeder
+-- Create date: 6/29/2018
+-- Description:	Translation and combination of the bca tool stored procedures
+-- for the new abm database listed below. Given two input scenario_id values,
+-- returns table of total auto mode toll costs segmented by base and build
+-- scenarios for the CTM and Truck ABM sub-models.
+--	[dbo].[run_aggregate_toll_comparison]
+--	[dbo].[run_aggregate_toll_processor]
+-- ===========================================================================
+BEGIN
+
+	with [toll_costs] AS (
+	SELECT
+		[scenario_id]
+		,[model_trip].[model_trip_description]
+		,SUM([toll_cost_drive]) AS [toll_cost_drive]
+	FROM
+		[fact].[person_trip]
+	INNER JOIN
+		[dimension].[model_trip]
+	ON
+		[person_trip].[model_trip_id] = [model_trip].[model_trip_id]
+	WHERE
+		[scenario_id] IN (@scenario_id_base, @scenario_id_build)
+	GROUP BY
+		[scenario_id]
+		,[model_trip].[model_trip_description])
+	INSERT INTO @tbl_toll_cost
+	SELECT
+		SUM(CASE	WHEN [scenario_id] = @scenario_id_base
+						AND [model_trip_description] = 'Commercial Vehicle'
+					THEN [toll_cost_drive] ELSE 0 END) AS [base_toll_ctm]
+		,SUM(CASE	WHEN [scenario_id] = @scenario_id_build
+						AND [model_trip_description] = 'Commercial Vehicle'
+					THEN [toll_cost_drive] ELSE 0 END) AS [build_toll_ctm]
+		,SUM(CASE	WHEN [scenario_id] = @scenario_id_base
+						AND [model_trip_description] = 'Truck'
+					THEN [toll_cost_drive] ELSE 0 END) AS [base_toll_truck]
+		,SUM(CASE	WHEN [scenario_id] = @scenario_id_build
+						AND [model_trip_description] = 'Truck'
+					THEN [toll_cost_drive] ELSE 0 END) AS [build_toll_truck]
+	FROM
+		toll_costs
+	RETURN
+END
+GO
+
+-- Add metadata for [bca].[fn_aggregate_toll]
+EXECUTE [db_meta].[add_xp] 'bca.fn_aggregate_toll', 'SUBSYSTEM', 'bca'
+EXECUTE [db_meta].[add_xp] 'bca.fn_aggregate_toll', 'MS_Description', 'function to return aggregate trips toll cost results for base and build scenarios'
+GO
+
+
+
+
+-- Create aggregate trips table valued function
+IF  EXISTS (SELECT * FROM sys.objects WHERE object_id = OBJECT_ID(N'[bca].[fn_aggregate_trips]') AND type in (N'FN', N'IF', N'TF', N'FS', N'FT'))
+DROP FUNCTION [bca].[fn_aggregate_trips]
+GO
+
+CREATE FUNCTION [bca].[fn_aggregate_trips]
+(
+	@scenario_id_base integer,
+	@scenario_id_build integer,
+	@vot_ctm float, -- value of time in $/hour for commercial travel model trips
+	@vot_truck float -- value of time in $/hour for truck model trips
+)
+RETURNS @tbl_aggregate_trips TABLE
+(
+	[base_cost_vot_ctm] float NOT NULL,
+	[build_cost_vot_ctm] float NOT NULL,
+	[benefit_vot_ctm] float NOT NULL,
+	[base_cost_vot_truck] float NOT NULL,
+	[build_cost_vot_truck] float NOT NULL,
+	[benefit_vot_truck] float NOT NULL
+)
+AS
+
+-- ===========================================================================
+-- Author:		RSG and Gregor Schroeder
+-- Create date: 7/16/2018
+-- Description:	Translation and combination of the bca tool stored procedures
+-- for the new abm database listed below. Given two input scenario_id values,
+-- and input values of time for commercial travel model and truck model trips,
+-- returns table of value of time costs for the build scenario given build
+-- scenario travel times and base scenario travel times segmented by the
+-- commercial travel model and truck model.
+--	[dbo].[run_aggregate_trips_comparison]
+--	[dbo].[run_aggregate_trips_processor]
+--	[dbo].[run_aggregate_trips_summary]
+-- ===========================================================================
+BEGIN
+	INSERT INTO @tbl_aggregate_trips
+	SELECT
+		SUM(CASE	WHEN [model_trip_description] = 'Commercial Vehicle'
+					THEN [base_cost_vot]
+					ELSE 0
+					END) AS [base_cost_vot_ctm]
+		,SUM(CASE	WHEN [model_trip_description] = 'Commercial Vehicle'
+					THEN [build_cost_vot]
+					ELSE 0
+					END) AS [build_cost_vot_ctm]
+		,SUM(CASE	WHEN [model_trip_description] = 'Commercial Vehicle'
+					THEN [base_cost_vot] - [build_cost_vot]
+					ELSE 0
+					END) AS [benefit_vot_ctm]
+		,SUM(CASE	WHEN [model_trip_description] = 'Truck'
+					THEN [base_cost_vot]
+					ELSE 0
+					END) AS [base_cost_vot_truck]
+		,SUM(CASE	WHEN [model_trip_description] = 'Truck'
+					THEN [build_cost_vot]
+					ELSE 0
+					END) AS [build_cost_vot_truck]
+		,SUM(CASE	WHEN [model_trip_description] = 'Truck'
+					THEN [base_cost_vot] - [build_cost_vot]
+					ELSE 0
+					END) AS [benefit_vot_truck]
+	FROM (
+		SELECT
+			[trips_build].[model_trip_description]
+			,SUM([trips_build].[weight_trip] * [trips_build].[time_total] *
+					CASE	WHEN [trips_build].[model_trip_description] = 'Commercial Vehicle'
+							THEN @vot_ctm / 60
+							WHEN [trips_build].[model_trip_description] = 'Truck'
+							THEN @vot_truck / 60
+							ELSE NULL END) AS [build_cost_vot]
+			,SUM([trips_build].[weight_trip] * [auto_skims_base].[time_total] *
+					CASE	WHEN [trips_build].[model_trip_description] = 'Commercial Vehicle'
+							THEN @vot_ctm / 60
+							WHEN [trips_build].[model_trip_description] = 'Truck'
+							THEN @vot_truck / 60
+							ELSE NULL END) AS [base_cost_vot]
+		FROM (
+			-- get build trip list for Commercial Vehicle and Truck models
+			-- to be matched with skims from base scenario
+			-- note these models only use auto skims
+			SELECT
+				[model_trip].[model_trip_description]
+				,[geography_trip_origin].[trip_origin_taz_13]
+				,[geography_trip_destination].[trip_destination_taz_13]
+				,CASE	WHEN [mode_trip].[mode_trip_description] = 'Heavy Truck - Non-Toll'
+						THEN 'Heavy Heavy Duty Truck (Non-Toll)'
+						WHEN [mode_trip].[mode_trip_description] = 'Heavy Truck - Toll'
+						THEN 'Heavy Heavy Duty Truck (Toll)'
+						WHEN [mode_trip].[mode_trip_description] = 'Intermediate Truck - Non-Toll'
+						THEN 'Light Heavy Duty Truck (Non-Toll)'
+						WHEN [mode_trip].[mode_trip_description] = 'Intermediate Truck - Toll'
+						THEN 'Light Heavy Duty Truck (Toll)'
+						WHEN [mode_trip].[mode_trip_description] = 'Light Vehicle - Non-Toll'
+						THEN 'Drive Alone Non-Toll'
+						WHEN [mode_trip].[mode_trip_description] = 'Light Vehicle - Toll'
+						THEN 'Drive Alone Toll Eligible'
+						WHEN [mode_trip].[mode_trip_description] = 'Medium Truck - Non-Toll'
+						THEN 'Medium Heavy Duty Truck (Non-Toll)'
+						WHEN [mode_trip].[mode_trip_description] = 'Medium Truck - Toll'
+						THEN 'Medium Heavy Duty Truck (Toll)'
+						ELSE [mode_trip].[mode_trip_description]
+						END AS [assignment_mode] -- recode trip modes to assignment modes
+				,[value_of_time_drive_bin_id]
+				,[time_trip_start].[trip_start_abm_5_tod]
+				,[person_trip].[time_total]
+				,[person_trip].[weight_trip]
+			FROM
+				[fact].[person_trip]
+			INNER JOIN
+				[dimension].[model_trip]
+			ON
+				[person_trip].[model_trip_id] = [model_trip].[model_trip_id]
+			INNER JOIN
+				[dimension].[mode_trip]
+			ON
+				[person_trip].[mode_trip_id] = [mode_trip].[mode_trip_id]
+			INNER JOIN
+				[dimension].[geography_trip_origin]
+			ON
+				[person_trip].[geography_trip_origin_id] = [geography_trip_origin].[geography_trip_origin_id]
+			INNER JOIN
+				[dimension].[geography_trip_destination]
+			ON
+				[person_trip].[geography_trip_destination_id] = [geography_trip_destination].[geography_trip_destination_id]
+			INNER JOIN
+				[dimension].[time_trip_start]
+			ON
+				[person_trip].[time_trip_start_id] = [time_trip_start].[time_trip_start_id]
+			WHERE
+				[person_trip].[scenario_id] = @scenario_id_build
+				AND [model_trip].[model_trip_description] IN ('Commercial Vehicle',
+															  'Truck') -- Commercial Vehicle and Truck models only, these models use auto modes only
+		) AS [trips_build]
+		INNER JOIN (
+			-- create base scenario auto skims from person trips table
+			-- skims are segmented by taz-taz, assignment mode, value of time bin, and ABM five time of day
+			-- if a trip is not present in the person trips table corresponding to a skim then the skim
+			-- is not present here
+			-- TODO confirm trip mode to assignment mode mappings for CTM and add in school bus and taxi?
+			SELECT
+				[geography_trip_origin].[trip_origin_taz_13]
+				,[geography_trip_destination].[trip_destination_taz_13]
+				,CASE	WHEN [mode_trip].[mode_trip_description] = 'Heavy Truck - Non-Toll'
+						THEN 'Heavy Heavy Duty Truck (Non-Toll)'
+						WHEN [mode_trip].[mode_trip_description] = 'Heavy Truck - Toll'
+						THEN 'Heavy Heavy Duty Truck (Toll)'
+						WHEN [mode_trip].[mode_trip_description] = 'Intermediate Truck - Non-Toll'
+						THEN 'Light Heavy Duty Truck (Non-Toll)'
+						WHEN [mode_trip].[mode_trip_description] = 'Intermediate Truck - Toll'
+						THEN 'Light Heavy Duty Truck (Toll)'
+						WHEN [mode_trip].[mode_trip_description] = 'Light Vehicle - Non-Toll'
+						THEN 'Drive Alone Non-Toll'
+						WHEN [mode_trip].[mode_trip_description] = 'Light Vehicle - Toll'
+						THEN 'Drive Alone Toll Eligible'
+						WHEN [mode_trip].[mode_trip_description] = 'Medium Truck - Non-Toll'
+						THEN 'Medium Heavy Duty Truck (Non-Toll)'
+						WHEN [mode_trip].[mode_trip_description] = 'Medium Truck - Toll'
+						THEN 'Medium Heavy Duty Truck (Toll)'
+						ELSE [mode_trip].[mode_trip_description]
+						END AS [assignment_mode] -- recode trip modes to assignment modes
+				,[value_of_time_drive_bin_id]
+				,[time_trip_start].[trip_start_abm_5_tod]
+				,SUM(([person_trip].[weight_person_trip] * [person_trip].[time_total])) / SUM([person_trip].[weight_person_trip]) AS [time_total]
+			FROM
+				[fact].[person_trip]
+			INNER JOIN
+				[dimension].[mode_trip]
+			ON
+				[person_trip].[mode_trip_id] = [mode_trip].[mode_trip_id]
+			INNER JOIN
+				[dimension].[geography_trip_origin]
+			ON
+				[person_trip].[geography_trip_origin_id] = [geography_trip_origin].[geography_trip_origin_id]
+			INNER JOIN
+				[dimension].[geography_trip_destination]
+			ON
+				[person_trip].[geography_trip_destination_id] = [geography_trip_destination].[geography_trip_destination_id]
+			INNER JOIN
+				[dimension].[time_trip_start]
+			ON
+				[person_trip].[time_trip_start_id] = [time_trip_start].[time_trip_start_id]
+			WHERE
+				[person_trip].[scenario_id] = @scenario_id_base
+				AND [mode_trip].[mode_trip_description] IN ('Drive Alone Non-Toll',
+															'Drive Alone Toll Eligible',
+															'Heavy Heavy Duty Truck (Non-Toll)',
+															'Heavy Heavy Duty Truck (Toll)',
+															'Heavy Truck - Non-Toll',
+															'Heavy Truck - Toll',
+															'Intermediate Truck - Non-Toll',
+															'Intermediate Truck - Toll',
+															'Light Heavy Duty Truck (Non-Toll)',
+															'Light Heavy Duty Truck (Toll)',
+															'Light Vehicle - Non-Toll',
+															'Light Vehicle - Toll',
+															'Medium Heavy Duty Truck (Non-Toll)',
+															'Medium Heavy Duty Truck (Toll)',
+															'Medium Truck - Non-Toll',
+															'Medium Truck - Toll',
+															'Shared Ride 2 Non-Toll',
+															'Shared Ride 2 Toll Eligible',
+															'Shared Ride 3 Non-Toll',
+															'Shared Ride 3 Toll Eligible') -- auto modes
+			GROUP BY
+				[geography_trip_origin].[trip_origin_taz_13]
+				,[geography_trip_destination].[trip_destination_taz_13]
+				,CASE	WHEN [mode_trip].[mode_trip_description] = 'Heavy Truck - Non-Toll'
+						THEN 'Heavy Heavy Duty Truck (Non-Toll)'
+						WHEN [mode_trip].[mode_trip_description] = 'Heavy Truck - Toll'
+						THEN 'Heavy Heavy Duty Truck (Toll)'
+						WHEN [mode_trip].[mode_trip_description] = 'Intermediate Truck - Non-Toll'
+						THEN 'Light Heavy Duty Truck (Non-Toll)'
+						WHEN [mode_trip].[mode_trip_description] = 'Intermediate Truck - Toll'
+						THEN 'Light Heavy Duty Truck (Toll)'
+						WHEN [mode_trip].[mode_trip_description] = 'Light Vehicle - Non-Toll'
+						THEN 'Drive Alone Non-Toll'
+						WHEN [mode_trip].[mode_trip_description] = 'Light Vehicle - Toll'
+						THEN 'Drive Alone Toll Eligible'
+						WHEN [mode_trip].[mode_trip_description] = 'Medium Truck - Non-Toll'
+						THEN 'Medium Heavy Duty Truck (Non-Toll)'
+						WHEN [mode_trip].[mode_trip_description] = 'Medium Truck - Toll'
+						THEN 'Medium Heavy Duty Truck (Toll)'
+						ELSE [mode_trip].[mode_trip_description]
+						END
+				,[value_of_time_drive_bin_id]
+				,[time_trip_start].[trip_start_abm_5_tod]
+			HAVING
+				SUM([person_trip].[weight_person_trip]) > 0
+		) AS [auto_skims_base]
+		ON
+			[trips_build].[trip_origin_taz_13] = [auto_skims_base].[trip_origin_taz_13]
+			AND [trips_build].[trip_destination_taz_13] = [auto_skims_base].[trip_destination_taz_13]
+			AND [trips_build].[assignment_mode] = [auto_skims_base].[assignment_mode]
+			AND [trips_build].[value_of_time_drive_bin_id] = [auto_skims_base].[value_of_time_drive_bin_id]
+			AND [trips_build].[trip_start_abm_5_tod] = [auto_skims_base].[trip_start_abm_5_tod]
+		GROUP BY
+			[trips_build].[model_trip_description]
+	) AS [result_table]
+	RETURN
+END
+GO
+
+-- Add metadata for [bca].[fn_aggregate_trips]
+EXECUTE [db_meta].[add_xp] 'bca.fn_aggregate_trips', 'SUBSYSTEM', 'bca'
+EXECUTE [db_meta].[add_xp] 'bca.fn_aggregate_trips', 'MS_Description', 'function to return aggregate trips value of time costs for build scenario under build and base travel times'
+GO
+
+
+
+
 -- Create auto_ownership table valued function
 IF  EXISTS (SELECT * FROM sys.objects WHERE object_id = OBJECT_ID(N'[bca].[fn_auto_ownership]') AND type in (N'FN', N'IF', N'TF', N'FS', N'FT'))
 DROP FUNCTION [bca].[fn_auto_ownership]
@@ -447,81 +774,6 @@ GO
 -- Add metadata for [bca].[fn_highway_link]
 EXECUTE [db_meta].[add_xp] 'bca.fn_highway_link', 'SUBSYSTEM', 'bca'
 EXECUTE [db_meta].[add_xp] 'bca.fn_highway_link', 'MS_Description', 'function to return loaded highway network results for base and build scenarios'
-GO
-
-
-
-
--- Create aggregate_toll table valued function
-IF  EXISTS (SELECT * FROM sys.objects WHERE object_id = OBJECT_ID(N'[bca].[fn_toll_cost]') AND type in (N'FN', N'IF', N'TF', N'FS', N'FT'))
-DROP FUNCTION [bca].[fn_toll_cost]
-GO
-
-CREATE FUNCTION [bca].[fn_toll_cost]
-(
-	@scenario_id_base integer,
-	@scenario_id_build integer
-)
-RETURNS @tbl_toll_cost TABLE 
-(
-	[base_toll_ctm_model] float NOT NULL
-	,[build_toll_ctm_model] float NOT NULL
-	,[base_toll_truck_model] float NOT NULL
-	,[build_toll_truck_model] float NOT NULL
-)
-AS
-
--- ===========================================================================
--- Author:		RSG and Gregor Schroeder
--- Create date: 6/29/2018
--- Description:	Translation and combination of the bca tool stored procedures
--- for the new abm database listed below. Given two input scenario_id values,
--- returns table of total auto mode toll costs segmented by base and build
--- scenarios for the CTM and Truck ABM sub-models.
---	[dbo].[run_aggregate_toll_comparison]
---	[dbo].[run_aggregate_toll_processor]
--- ===========================================================================
-BEGIN
-
-	with [toll_costs] AS (
-	SELECT
-		[scenario_id]
-		,[model_trip].[model_trip_description]
-		,SUM([toll_cost_drive]) AS [toll_cost_drive]
-	FROM
-		[fact].[person_trip]
-	INNER JOIN
-		[dimension].[model_trip]
-	ON
-		[person_trip].[model_trip_id] = [model_trip].[model_trip_id]
-	WHERE
-		[scenario_id] IN (@scenario_id_base, @scenario_id_build)
-	GROUP BY
-		[scenario_id]
-		,[model_trip].[model_trip_description])
-	INSERT INTO @tbl_toll_cost
-	SELECT
-		SUM(CASE	WHEN [scenario_id] = @scenario_id_base
-						AND [model_trip_description] = 'Commercial Vehicle'
-					THEN [toll_cost_drive] ELSE 0 END) AS [base_toll_ctm_model]
-		,SUM(CASE	WHEN [scenario_id] = @scenario_id_build
-						AND [model_trip_description] = 'Commercial Vehicle'
-					THEN [toll_cost_drive] ELSE 0 END) AS [build_toll_ctm_model]
-		,SUM(CASE	WHEN [scenario_id] = @scenario_id_base
-						AND [model_trip_description] = 'Truck'
-					THEN [toll_cost_drive] ELSE 0 END) AS [base_toll_truck_model]
-		,SUM(CASE	WHEN [scenario_id] = @scenario_id_build
-						AND [model_trip_description] = 'Truck'
-					THEN [toll_cost_drive] ELSE 0 END) AS [build_toll_truck_model]
-	FROM
-		toll_costs
-	RETURN 
-END
-GO
-
--- Add metadata for [bca].[fn_toll_cost]
-EXECUTE [db_meta].[add_xp] 'bca.fn_toll_cost', 'SUBSYSTEM', 'bca'
-EXECUTE [db_meta].[add_xp] 'bca.fn_toll_cost', 'MS_Description', 'function to return toll cost results for base and build scenarios'
 GO
 
 
