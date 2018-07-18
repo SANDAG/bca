@@ -16,8 +16,14 @@ sqlcmd -E -C -b -S %db_server% -i %script_path%create_bca_db.sql -v db_name=%db_
 echo Creating db_meta schema and objects
 sqlcmd -E -C -b -S %db_server% -d %db_name% -i %script_path%db_meta.sql || goto :EOF
 
+echo Creating tools used to manage database
+sqlcmd -E -C -b -S %db_server% -d %db_name% -i %script_path%management.sql || goto :EOF
+
 echo Creating abm database synonyms
 sqlcmd -E -C -b -S %db_server% -d %db_name% -i %script_path%abm_synonyms.sql -v abm_db_name=%abm_db_name% || goto :EOF
+
+echo Creating bca tables
+sqlcmd -E -C -b -S %db_server% -d %db_name% -i %script_path%tables.sql || goto :EOF
 
 echo Creating bca programmability objects
 sqlcmd -E -C -b -S %db_server% -d %db_name% -i %script_path%programmability.sql || goto :EOF

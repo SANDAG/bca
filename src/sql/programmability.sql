@@ -1,18 +1,3 @@
--- Create bca schema
-IF NOT EXISTS (SELECT schema_name FROM information_schema.schemata WHERE schema_name='bca')
-EXEC ('CREATE SCHEMA [bca]')
-GO
-
--- Add metadata for [bca]
-IF EXISTS(SELECT * FROM [db_meta].[data_dictionary] WHERE [ObjectType] = 'SCHEMA' AND [FullObjectName] = '[bca]' AND [PropertyName] = 'MS_Description')
-EXECUTE [db_meta].[drop_xp] 'bca', 'MS_Description'
-GO
-EXECUTE [db_meta].[add_xp] 'bca', 'MS_Description', 'schema to hold and manage all bca tool related objects'
-GO
-
-
-
-
 -- Create aggregate_toll table valued function
 IF  EXISTS (SELECT * FROM sys.objects WHERE object_id = OBJECT_ID(N'[bca].[fn_aggregate_toll]') AND type in (N'FN', N'IF', N'TF', N'FS', N'FT'))
 DROP FUNCTION [bca].[fn_aggregate_toll]
