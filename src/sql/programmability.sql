@@ -459,6 +459,150 @@ GO
 
 
 
+-- Create emissions table valued function
+IF  EXISTS (SELECT * FROM sys.objects WHERE object_id = OBJECT_ID(N'[bca].[fn_emissions]') AND type in (N'FN', N'IF', N'TF', N'FS', N'FT'))
+DROP FUNCTION [bca].[fn_emissions]
+GO
+
+CREATE FUNCTION [bca].[fn_emissions]
+(
+	@scenario_id_base integer,
+	@scenario_id_build integer,
+	@cost_winter_CO2 float, -- cost of Winter Carbon Dioxide Tons Per Day Total
+	@cost_annual_PM2_5 float, -- cost of Annual Fine Particulate Matter (<2.5microns) Tons Per Day Total
+	@cost_summer_NOx float, -- cost of Summer Nitrogen Dioxide Tons Per Day Total
+	@cost_summer_ROG float,-- cost of Summer Reactive Organic Gases Tons Per Day Total
+	@cost_annual_SOx float,-- cost of Annual Sulfur Oxides Tons Per Day Total
+	@cost_annual_PM10 float, -- cost of Annual Fine Particulate Matter (<10 microns) Tons Per Day Total
+	@cost_annual_CO2 float -- cost of Annual Carbon Dioxide Tons Per Day Total
+)
+RETURNS @tbl_emissions TABLE
+(
+	[difference_Winter_CO2_TOTEX] float NOT NULL
+	,[difference_Annual_PM2_5_TOTAL] float NOT NULL
+	,[difference_Summer_NOx_TOTEX] float NOT NULL
+	,[difference_Summer_ROG_TOTAL] float NOT NULL
+	,[difference_Annual_SOx_TOTEX] float NOT NULL
+	,[difference_Annual_PM10_TOTAL] float NOT NULL
+	,[difference_Annual_CO2_TOTEX] float NOT NULL
+	,[benefit_Winter_CO2_TOTEX] float NOT NULL
+	,[benefit_Annual_PM2_5_TOTAL] float NOT NULL
+	,[benefit_Summer_NOx_TOTEX] float NOT NULL
+	,[benefit_Summer_ROG_TOTAL] float NOT NULL
+	,[benefit_Annual_SOx_TOTEX] float NOT NULL
+	,[benefit_Annual_PM10_TOTAL] float NOT NULL
+	,[benefit_Annual_CO2_TOTEX] float NOT NULL
+)
+AS
+
+-- ===========================================================================
+-- Author:		RSG and Gregor Schroeder
+-- Create date: 7/18/2018
+-- Description:	Translation and combination of the bca tool stored procedures
+-- for the new abm database listed below. Given two input scenario_id values
+-- and input cost parameters for each emission type, calculates the
+-- differences and benefits between the base and build scenarios for emfac
+-- emissions progam output emissions. Relies on the output for each Season
+-- from the emfac emissions program to be loaded into the table
+-- [bca].[emfac_output].
+--	[dbo].[run_emissions_comparison]
+--	[dbo].[run_emissions_processor]
+--	[dbo].[run_emissions_summary]
+-- ===========================================================================
+BEGIN
+	with [emissions] AS (
+		SELECT
+			SUM(CASE	WHEN [Season] = 'Winter'
+						AND [scenario_id] = @scenario_id_base
+						THEN [CO2_TOTEX] ELSE 0
+						END) AS [base_Winter_CO2_TOTEX]
+			,SUM(CASE	WHEN [Season] = 'Winter'
+						AND [scenario_id] = @scenario_id_build
+						THEN [CO2_TOTEX] ELSE 0
+						END) AS [build_Winter_CO2_TOTEX]
+			,SUM(CASE	WHEN [Season] = 'Annual'
+						AND [scenario_id] = @scenario_id_base
+						THEN [PM2_5_TOTAL] ELSE 0
+						END) AS [base_Annual_PM2_5_TOTAL]
+			,SUM(CASE	WHEN [Season] = 'Annual'
+						AND [scenario_id] = @scenario_id_build
+						THEN [PM2_5_TOTAL] ELSE 0
+						END) AS [build_Annual_PM2_5_TOTAL]
+			,SUM(CASE	WHEN [Season] = 'Summer'
+						AND [scenario_id] = @scenario_id_base
+						THEN [NOx_TOTEX] ELSE 0
+						END) AS [base_Summer_NOx_TOTEX]
+			,SUM(CASE	WHEN [Season] = 'Summer'
+						AND [scenario_id] = @scenario_id_build
+						THEN [NOx_TOTEX] ELSE 0
+						END) AS [build_Summer_NOx_TOTEX]
+			,SUM(CASE	WHEN [Season] = 'Summer'
+						AND [scenario_id] = @scenario_id_base
+						THEN [ROG_TOTAL] ELSE 0
+						END) AS [base_Summer_ROG_TOTAL]
+			,SUM(CASE	WHEN [Season] = 'Summer'
+						AND [scenario_id] = @scenario_id_build
+						THEN [ROG_TOTAL] ELSE 0
+						END) AS [build_Summer_ROG_TOTAL]
+			,SUM(CASE	WHEN [Season] = 'Annual'
+						AND [scenario_id] = @scenario_id_base
+						THEN [SOx_TOTEX] ELSE 0
+						END) AS [base_Annual_SOx_TOTEX]
+			,SUM(CASE	WHEN [Season] = 'Annual'
+						AND [scenario_id] = @scenario_id_build
+						THEN [SOx_TOTEX] ELSE 0
+						END) AS [build_Annual_SOx_TOTEX]
+			,SUM(CASE	WHEN [Season] = 'Annual'
+						AND [scenario_id] = @scenario_id_base
+						THEN [PM10_TOTAL] ELSE 0
+						END) AS [base_Annual_PM10_TOTAL]
+			,SUM(CASE	WHEN [Season] = 'Annual'
+						AND [scenario_id] = @scenario_id_build
+						THEN [PM10_TOTAL] ELSE 0
+						END) AS [build_Annual_PM10_TOTAL]
+			,SUM(CASE	WHEN [Season] = 'Annual'
+						AND [scenario_id] = @scenario_id_base
+						THEN [CO2_TOTEX] ELSE 0
+						END) AS [base_Annual_CO2_TOTEX]
+			,SUM(CASE	WHEN [Season] = 'Annual'
+						AND [scenario_id] = @scenario_id_build
+						THEN [CO2_TOTEX] ELSE 0
+						END) AS [build_Annual_CO2_TOTEX]
+		FROM
+			[bca].[emfac_output]
+		WHERE
+			[scenario_id] IN (@scenario_id_base, @scenario_id_build)
+			AND LTRIM(RTRIM([Veh_Tech])) = 'All Vehicles') -- only interested in totals
+	INSERT INTO @tbl_emissions
+	SELECT
+		([base_Winter_CO2_TOTEX] - [build_Winter_CO2_TOTEX]) AS [difference_Winter_CO2_TOTEX]
+		,([base_Annual_PM2_5_TOTAL] - [build_Annual_PM2_5_TOTAL]) AS [difference_Annual_PM2_5_TOTAL]
+		,([base_Summer_NOx_TOTEX] - [build_Summer_NOx_TOTEX]) AS [difference_Summer_NOx_TOTEX]
+		,([base_Summer_ROG_TOTAL] - [build_Summer_ROG_TOTAL]) AS [difference_Summer_ROG_TOTAL]
+		,([base_Annual_SOx_TOTEX] - [build_Annual_SOx_TOTEX]) AS [difference_Annual_SOx_TOTEX]
+		,([base_Annual_PM10_TOTAL] - [build_Annual_PM10_TOTAL]) AS [difference_Annual_PM10_TOTAL]
+		,([base_Annual_CO2_TOTEX] - [build_Annual_CO2_TOTEX]) AS [difference_Annual_CO2_TOTEX]
+		,@cost_winter_CO2 * ([base_Winter_CO2_TOTEX] - [build_Winter_CO2_TOTEX]) AS [benefit_Winter_CO2_TOTEX]
+		,@cost_annual_PM2_5 * ([base_Annual_PM2_5_TOTAL] - [build_Annual_PM2_5_TOTAL]) AS [benefit_Annual_PM2_5_TOTAL]
+		,@cost_summer_NOx * ([base_Summer_NOx_TOTEX] - [build_Summer_NOx_TOTEX]) AS [benefit_Summer_NOx_TOTEX]
+		,@cost_summer_ROG * ([base_Summer_ROG_TOTAL] - [build_Summer_ROG_TOTAL]) AS [benefit_Summer_ROG_TOTAL]
+		,@cost_annual_SOx * ([base_Annual_SOx_TOTEX] - [build_Annual_SOx_TOTEX]) AS [benefit_Annual_SOx_TOTEX]
+		,@cost_annual_PM10 * ([base_Annual_PM10_TOTAL] - [build_Annual_PM10_TOTAL]) AS [benefit_Annual_PM10_TOTAL]
+		,@cost_annual_CO2 * ([base_Annual_CO2_TOTEX] - [build_Annual_CO2_TOTEX]) AS [benefit_Annual_CO2_TOTEX]
+	FROM
+		[emissions]
+	RETURN
+END
+GO
+
+-- Add metadata for [bca].[fn_emissions]
+EXECUTE [db_meta].[add_xp] 'bca.fn_emissions', 'SUBSYSTEM', 'bca'
+EXECUTE [db_meta].[add_xp] 'bca.fn_emissions', 'MS_Description', 'function to return emfac program output results for base and build scenarios'
+GO
+
+
+
+
 -- Create demographics table valued function
 IF  EXISTS (SELECT * FROM sys.objects WHERE object_id = OBJECT_ID(N'[bca].[fn_demographics]') AND type in (N'FN', N'IF', N'TF', N'FS', N'FT'))
 DROP FUNCTION [bca].[fn_demographics]
