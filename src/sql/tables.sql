@@ -19,4 +19,13 @@ GO
 -- Add metadata for [bca].[emfac_output]
 EXECUTE [db_meta].[add_xp] 'bca.emfac_output', 'SUBSYSTEM', 'bca'
 EXECUTE [db_meta].[add_xp] 'bca.emfac_output', 'MS_Description', 'table to hold emfac output data for abm scenarios from emfac output xlsx files'
+EXECUTE [db_meta].[add_xp] 'bca.emfac_output.scenario_id', 'MS_Description', 'abm scenario identifier'
+EXECUTE [db_meta].[add_xp] 'bca.emfac_output.Season', 'MS_Description', 'emfac season - Annual,Summer,Winter'
+EXECUTE [db_meta].[add_xp] 'bca.emfac_output.Veh_Tech', 'MS_Description', 'emfac vehicle class'
+EXECUTE [db_meta].[add_xp] 'bca.emfac_output.CO2_TOTEX', 'MS_Description', 'Carbon Dioxide - Tons Per Day - Total'
+EXECUTE [db_meta].[add_xp] 'bca.emfac_output.NOx_TOTEX', 'MS_Description', 'Nitrogen Dioxide - Tons Per Day - Total'
+EXECUTE [db_meta].[add_xp] 'bca.emfac_output.PM2_5_TOTAL', 'MS_Description', 'Fine Particulate Matter (<2.5 microns) - Tons Per Day - Total'
+EXECUTE [db_meta].[add_xp] 'bca.emfac_output.PM10_TOTAL', 'MS_Description', 'Fine Particulate Matter (<10 microns) - Tons Per Day - Total'
+EXECUTE [db_meta].[add_xp] 'bca.emfac_output.ROG_TOTAL', 'MS_Description', 'Reactive Organic Gases - Tons Per Day - Total'
+EXECUTE [db_meta].[add_xp] 'bca.emfac_output.SOx_TOTEX', 'MS_Description', 'Sulfur Oxides - Tons Per Day - Total'
 GO
