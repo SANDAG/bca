@@ -908,3 +908,139 @@ GO
 EXECUTE [db_meta].[add_xp] 'bca.fn_physical_activity', 'SUBSYSTEM', 'bca'
 EXECUTE [db_meta].[add_xp] 'bca.fn_physical_activity', 'MS_Description', 'function to return person physical activity results for base and build scenarios'
 GO
+
+
+
+
+-- Create stored procedure to load emfac emissions output xlsx files
+IF  EXISTS (SELECT * FROM sys.objects WHERE object_id = OBJECT_ID(N'[bca].[sp_load_emfac_output]') AND type in (N'P', N'PC'))
+DROP PROCEDURE [bca].[sp_load_emfac_output]
+GO
+
+CREATE PROCEDURE [bca].[sp_load_emfac_output]
+	@scenario_id integer,
+	@annual_emfac_path nvarchar(max), -- unc path to the emfac emissions program output workbook for the Annual Season
+	@summer_emfac_path nvarchar(max), -- unc path to the emfac emissions program output workbook for the Summer Season
+	@winter_emfac_path nvarchar(max) -- unc path to the emfac emissions program output workbook for the Winter Season
+AS
+
+/*	Author: Gregor Schroeder
+	Date: 7/17/2018
+	Description: Loads EMFAC emissions program output xlsx workbook data into the
+		[bca].[emfac_output] table for a given input scenario for each
+		Season (Annual,Summer,Winter) if the data has not already been loaded.
+		Each EMFAC emissions program output workbook must contain the worksheet
+		[Total SANDAG] and the columns ([Season],[Veh_Tech],[CO2_TOTEX],[NOx_TOTEX],
+		[PM2_5_TOTAL],[PM10_TOTAL],[ROG_TOTAL],[SOx_TOTEX]) within that worksheet.
+		One can specify file paths for all three seasons, a subset, or none at all
+		depending if none, a subset, or all of the data has already been loaded
+		into the [bca].[emfac_output] table.
+		*/
+
+-- in order to run OPENROWSET or OPENDATASOURCE the server must allow Ad Hoc Distriuted Queries
+--https://docs.microsoft.com/en-us/sql/database-engine/configure-windows/ad-hoc-distributed-queries-server-configuration-option?view=sql-server-2017
+--sp_configure 'show advanced options', 1;
+--RECONFIGURE;
+--GO
+--sp_configure 'Ad Hoc Distributed Queries', 1;
+--RECONFIGURE;
+--GO
+
+-- in order to connect to Microsoft Excel using the ACE 12.0 Driver in a 64 bit instance of MSSQL
+-- the following options must be turned on and the driver itself must be installed on the instance
+--EXEC master.dbo.sp_MSset_oledb_prop N'Microsoft.ACE.OLEDB.12.0' , N'AllowInProcess' , 1
+--GO
+--EXEC master.dbo.sp_MSset_oledb_prop N'Microsoft.ACE.OLEDB.12.0' , N'DynamicParameters' , 1
+--GO
+
+-- download the 64 bit driver here and install from the command prompt with the passive flag
+-- passive flag is necessary in case the 32 bit version is already installed otherwise it will not allow installation
+-- https://www.microsoft.com/en-us/download/details.aspx?id=13255
+
+DECLARE @sql nvarchar(max)
+
+
+-- Annual emfac data
+-- if there is no data for the scenario_id in the [bca].[emfac_output] table for a given season
+-- then insert data from the emfac output xlsx file for the given season
+IF NOT EXISTS (SELECT TOP 1 [scenario_id] FROM [bca].[emfac_output] WHERE [scenario_id] = @scenario_id AND [Season] = 'Annual')
+BEGIN
+	-- insert emfac output xlsx data of interest into [bca].[emfac_output] table
+	SET @sql = '
+	INSERT INTO [bca].[emfac_output]
+	SELECT
+		' + CONVERT(nvarchar, @scenario_id) + ' AS [scenario_id]
+		,[Season]
+		,[Veh_Tech]
+		,[CO2_TOTEX]
+		,[NOx_TOTEX]
+		,[PM2_5_TOTAL]
+		,[PM10_TOTAL]
+		,[ROG_TOTAL]
+		,[SOx_TOTEX]
+	FROM
+		OPENROWSET(''Microsoft.ACE.OLEDB.12.0'',
+				   ''Excel 12.0;Database=' + @annual_emfac_path + ';HDR=YES'',
+				   ''SELECT * FROM [Total SANDAG$]'')'
+	EXECUTE(@sql)
+END
+
+
+-- Summer emfac data
+-- if there is no data for the scenario_id in the [bca].[emfac_output] table for a given season
+-- then insert data from the emfac output xlsx file for the given season
+IF NOT EXISTS (SELECT TOP 1 [scenario_id] FROM [bca].[emfac_output] WHERE [scenario_id] = @scenario_id AND [Season] = 'Summer')
+BEGIN
+	-- insert emfac output xlsx data of interest into [bca].[emfac_output] table
+	SET @sql = '
+	INSERT INTO [bca].[emfac_output]
+	SELECT
+		' + CONVERT(nvarchar, @scenario_id) + ' AS [scenario_id]
+		,[Season]
+		,[Veh_Tech]
+		,[CO2_TOTEX]
+		,[NOx_TOTEX]
+		,[PM2_5_TOTAL]
+		,[PM10_TOTAL]
+		,[ROG_TOTAL]
+		,[SOx_TOTEX]
+	FROM
+		OPENROWSET(''Microsoft.ACE.OLEDB.12.0'',
+				   ''Excel 12.0;Database=' + @summer_emfac_path + ';HDR=YES'',
+				   ''SELECT * FROM [Total SANDAG$]'')'
+	EXECUTE(@sql)
+END
+
+
+-- Winter emfac data
+-- if there is no data for the scenario_id in the [bca].[emfac_output] table for a given season
+-- then insert data from the emfac output xlsx file for the given season
+IF NOT EXISTS (SELECT TOP 1 [scenario_id] FROM [bca].[emfac_output] WHERE [scenario_id] = @scenario_id AND [Season] = 'Winter')
+BEGIN
+	-- insert emfac output xlsx data of interest into [bca].[emfac_output] table
+	SET @sql = '
+	INSERT INTO [bca].[emfac_output]
+	SELECT
+		' + CONVERT(nvarchar, @scenario_id) + ' AS [scenario_id]
+		,[Season]
+		,[Veh_Tech]
+		,[CO2_TOTEX]
+		,[NOx_TOTEX]
+		,[PM2_5_TOTAL]
+		,[PM10_TOTAL]
+		,[ROG_TOTAL]
+		,[SOx_TOTEX]
+	FROM
+		OPENROWSET(''Microsoft.ACE.OLEDB.12.0'',
+				   ''Excel 12.0;Database=' + @winter_emfac_path + ';HDR=YES'',
+				   ''SELECT * FROM [Total SANDAG$]'')'
+	EXECUTE(@sql)
+END
+ELSE
+	PRINT 'EMFAC emissions program output data for [scenario_id] = ' + CONVERT(nvarchar, @scenario_id) + ' has already been loaded for all seasons'
+GO
+
+-- Add metadata for [bca].[sp_load_emfac_output]
+EXECUTE [db_meta].[add_xp] 'bca.sp_load_emfac_output', 'SUBSYSTEM', 'bca'
+EXECUTE [db_meta].[add_xp] 'bca.sp_load_emfac_output', 'MS_Description', 'stored procedure to load emfac emissions program output xlsx files'
+GO
