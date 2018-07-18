@@ -1128,6 +1128,8 @@ BEGIN
 				   ''SELECT * FROM [Total SANDAG$]'')'
 	EXECUTE(@sql)
 END
+ELSE
+	PRINT 'EMFAC emissions program output data for [scenario_id] = ' + CONVERT(nvarchar, @scenario_id) + ' has already been loaded for Annual Season'
 
 
 -- Summer emfac data
@@ -1154,6 +1156,8 @@ BEGIN
 				   ''SELECT * FROM [Total SANDAG$]'')'
 	EXECUTE(@sql)
 END
+ELSE
+	PRINT 'EMFAC emissions program output data for [scenario_id] = ' + CONVERT(nvarchar, @scenario_id) + ' has already been loaded for Summer Season'
 
 
 -- Winter emfac data
@@ -1181,7 +1185,7 @@ BEGIN
 	EXECUTE(@sql)
 END
 ELSE
-	PRINT 'EMFAC emissions program output data for [scenario_id] = ' + CONVERT(nvarchar, @scenario_id) + ' has already been loaded for all seasons'
+	PRINT 'EMFAC emissions program output data for [scenario_id] = ' + CONVERT(nvarchar, @scenario_id) + ' has already been loaded for Winter Season'
 GO
 
 -- Add metadata for [bca].[sp_load_emfac_output]
