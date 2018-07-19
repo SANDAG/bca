@@ -468,7 +468,7 @@ CREATE FUNCTION [bca].[fn_emissions]
 (
 	@scenario_id_base integer,
 	@scenario_id_build integer,
-	@cost_winter_CO2 float, -- cost of Winter Carbon Dioxide Tons Per Day Total
+	@cost_winter_CO float, -- cost of Winter Carbon Monoxide Tons Per Day Total
 	@cost_annual_PM2_5 float, -- cost of Annual Fine Particulate Matter (<2.5microns) Tons Per Day Total
 	@cost_summer_NOx float, -- cost of Summer Nitrogen Dioxide Tons Per Day Total
 	@cost_summer_ROG float,-- cost of Summer Reactive Organic Gases Tons Per Day Total
@@ -478,7 +478,7 @@ CREATE FUNCTION [bca].[fn_emissions]
 )
 RETURNS @tbl_emissions TABLE
 (
-	[difference_Winter_CO2_TOTEX] float NOT NULL
+	[difference_Winter_CO_TOTEX] float NOT NULL
 	,[difference_Annual_PM2_5_TOTAL] float NOT NULL
 	,[difference_Summer_NOx_TOTEX] float NOT NULL
 	,[difference_Summer_ROG_TOTAL] float NOT NULL
@@ -514,12 +514,12 @@ BEGIN
 		SELECT
 			SUM(CASE	WHEN [Season] = 'Winter'
 						AND [scenario_id] = @scenario_id_base
-						THEN [CO2_TOTEX] ELSE 0
-						END) AS [base_Winter_CO2_TOTEX]
+						THEN [CO_TOTEX] ELSE 0
+						END) AS [base_Winter_CO_TOTEX]
 			,SUM(CASE	WHEN [Season] = 'Winter'
 						AND [scenario_id] = @scenario_id_build
-						THEN [CO2_TOTEX] ELSE 0
-						END) AS [build_Winter_CO2_TOTEX]
+						THEN [CO_TOTEX] ELSE 0
+						END) AS [build_Winter_CO_TOTEX]
 			,SUM(CASE	WHEN [Season] = 'Annual'
 						AND [scenario_id] = @scenario_id_base
 						THEN [PM2_5_TOTAL] ELSE 0
@@ -575,14 +575,14 @@ BEGIN
 			AND LTRIM(RTRIM([Veh_Tech])) = 'All Vehicles') -- only interested in totals
 	INSERT INTO @tbl_emissions
 	SELECT
-		([base_Winter_CO2_TOTEX] - [build_Winter_CO2_TOTEX]) AS [difference_Winter_CO2_TOTEX]
+		([base_Winter_CO_TOTEX] - [build_Winter_CO_TOTEX]) AS [difference_Winter_CO_TOTEX]
 		,([base_Annual_PM2_5_TOTAL] - [build_Annual_PM2_5_TOTAL]) AS [difference_Annual_PM2_5_TOTAL]
 		,([base_Summer_NOx_TOTEX] - [build_Summer_NOx_TOTEX]) AS [difference_Summer_NOx_TOTEX]
 		,([base_Summer_ROG_TOTAL] - [build_Summer_ROG_TOTAL]) AS [difference_Summer_ROG_TOTAL]
 		,([base_Annual_SOx_TOTEX] - [build_Annual_SOx_TOTEX]) AS [difference_Annual_SOx_TOTEX]
 		,([base_Annual_PM10_TOTAL] - [build_Annual_PM10_TOTAL]) AS [difference_Annual_PM10_TOTAL]
 		,([base_Annual_CO2_TOTEX] - [build_Annual_CO2_TOTEX]) AS [difference_Annual_CO2_TOTEX]
-		,@cost_winter_CO2 * ([base_Winter_CO2_TOTEX] - [build_Winter_CO2_TOTEX]) AS [benefit_Winter_CO2_TOTEX]
+		,@cost_winter_CO * ([base_Winter_CO_TOTEX] - [build_Winter_CO_TOTEX]) AS [benefit_Winter_CO_TOTEX]
 		,@cost_annual_PM2_5 * ([base_Annual_PM2_5_TOTAL] - [build_Annual_PM2_5_TOTAL]) AS [benefit_Annual_PM2_5_TOTAL]
 		,@cost_summer_NOx * ([base_Summer_NOx_TOTEX] - [build_Summer_NOx_TOTEX]) AS [benefit_Summer_NOx_TOTEX]
 		,@cost_summer_ROG * ([base_Summer_ROG_TOTAL] - [build_Summer_ROG_TOTAL]) AS [benefit_Summer_ROG_TOTAL]
@@ -1074,13 +1074,14 @@ AS
 		[bca].[emfac_output] table for a given input scenario for each
 		Season (Annual,Summer,Winter) if the data has not already been loaded.
 		Each EMFAC emissions program output workbook must contain the worksheet
-		[Total SANDAG] and the columns ([Season],[Veh_Tech],[CO2_TOTEX],[NOx_TOTEX],
-		[PM2_5_TOTAL],[PM10_TOTAL],[ROG_TOTAL],[SOx_TOTEX]) within that worksheet.
+		[Total SANDAG] and the columns ([Season],[Veh_Tech],,[CO2_TOTEX], [CO2_TOTEX],
+		[NOx_TOTEX],[PM2_5_TOTAL],[PM10_TOTAL],[ROG_TOTAL],[SOx_TOTEX]) within that worksheet.
 		One can specify file paths for all three seasons, a subset, or none at all
 		depending if none, a subset, or all of the data has already been loaded
 		into the [bca].[emfac_output] table.
 		*/
 
+-- TODO having issues with socioeca8, works on abm_13_2_3
 -- in order to run OPENROWSET or OPENDATASOURCE the server must allow Ad Hoc Distriuted Queries
 --https://docs.microsoft.com/en-us/sql/database-engine/configure-windows/ad-hoc-distributed-queries-server-configuration-option?view=sql-server-2017
 --sp_configure 'show advanced options', 1;
@@ -1116,6 +1117,7 @@ BEGIN
 		' + CONVERT(nvarchar, @scenario_id) + ' AS [scenario_id]
 		,[Season]
 		,[Veh_Tech]
+		,[CO_TOTEX]
 		,[CO2_TOTEX]
 		,[NOx_TOTEX]
 		,[PM2_5_TOTAL]
@@ -1144,6 +1146,7 @@ BEGIN
 		' + CONVERT(nvarchar, @scenario_id) + ' AS [scenario_id]
 		,[Season]
 		,[Veh_Tech]
+		,[CO_TOTEX]
 		,[CO2_TOTEX]
 		,[NOx_TOTEX]
 		,[PM2_5_TOTAL]
@@ -1172,6 +1175,7 @@ BEGIN
 		' + CONVERT(nvarchar, @scenario_id) + ' AS [scenario_id]
 		,[Season]
 		,[Veh_Tech]
+		,[CO_TOTEX]
 		,[CO2_TOTEX]
 		,[NOx_TOTEX]
 		,[PM2_5_TOTAL]

@@ -3,6 +3,7 @@ CREATE TABLE [bca].[emfac_output] (
 	[scenario_id] integer NOT NULL
 	,[Season] nchar(10) NOT NULL
 	,[Veh_Tech] nchar(50) NOT NULL
+	,[CO_TOTEX] float NOT NULL
 	,[CO2_TOTEX] float NOT NULL
 	,[NOx_TOTEX] float NOT NULL
 	,[PM2_5_TOTAL] float NOT NULL
@@ -22,6 +23,7 @@ EXECUTE [db_meta].[add_xp] 'bca.emfac_output', 'MS_Description', 'table to hold 
 EXECUTE [db_meta].[add_xp] 'bca.emfac_output.scenario_id', 'MS_Description', 'abm scenario identifier'
 EXECUTE [db_meta].[add_xp] 'bca.emfac_output.Season', 'MS_Description', 'emfac season - Annual,Summer,Winter'
 EXECUTE [db_meta].[add_xp] 'bca.emfac_output.Veh_Tech', 'MS_Description', 'emfac vehicle class'
+EXECUTE [db_meta].[add_xp] 'bca.emfac_output.CO_TOTEX', 'MS_Description', 'Carbon Monoxide - Tons Per Day - Total'
 EXECUTE [db_meta].[add_xp] 'bca.emfac_output.CO2_TOTEX', 'MS_Description', 'Carbon Dioxide - Tons Per Day - Total'
 EXECUTE [db_meta].[add_xp] 'bca.emfac_output.NOx_TOTEX', 'MS_Description', 'Nitrogen Dioxide - Tons Per Day - Total'
 EXECUTE [db_meta].[add_xp] 'bca.emfac_output.PM2_5_TOTAL', 'MS_Description', 'Fine Particulate Matter (<2.5 microns) - Tons Per Day - Total'
