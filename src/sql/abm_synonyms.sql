@@ -76,6 +76,12 @@ GO
 CREATE SYNONYM [dimension].[mode] FOR $(abm_db_name).[dimension].[mode]
 GO
 
+IF OBJECT_ID('dimension.mode_tour', 'sn') IS NOT NULL
+	DROP SYNONYM [dimension].[mode_tour]
+GO
+CREATE SYNONYM [dimension].[mode_tour] FOR $(abm_db_name).[dimension].[mode_tour]
+GO
+
 IF OBJECT_ID('dimension.mode_trip', 'sn') IS NOT NULL
 	DROP SYNONYM [dimension].[mode_trip]
 GO
@@ -100,10 +106,22 @@ GO
 CREATE SYNONYM [dimension].[time_trip_start] FOR $(abm_db_name).[dimension].[time_trip_start]
 GO
 
+IF OBJECT_ID('dimension.tour', 'sn') IS NOT NULL
+	DROP SYNONYM [dimension].[tour]
+GO
+CREATE SYNONYM [dimension].[tour] FOR $(abm_db_name).[dimension].[tour]
+GO
+
 IF OBJECT_ID('fact.person_trip', 'sn') IS NOT NULL
 	DROP SYNONYM [fact].[person_trip]
 GO
 CREATE SYNONYM [fact].[person_trip] FOR $(abm_db_name).[fact].[person_trip]
+GO
+
+IF OBJECT_ID('dimension.purpose_tour', 'sn') IS NOT NULL
+	DROP SYNONYM [dimension].[purpose_tour]
+GO
+CREATE SYNONYM [dimension].[purpose_tour] FOR $(abm_db_name).[dimension].[purpose_tour]
 GO
 
 IF OBJECT_ID('dimension.value_of_time_drive_bin', 'sn') IS NOT NULL

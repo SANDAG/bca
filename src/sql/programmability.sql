@@ -87,12 +87,12 @@ CREATE FUNCTION [bca].[fn_aggregate_trips]
 )
 RETURNS @tbl_aggregate_trips TABLE
 (
-	[base_cost_vot_ctm] float NOT NULL,
-	[build_cost_vot_ctm] float NOT NULL,
-	[benefit_vot_ctm] float NOT NULL,
-	[base_cost_vot_truck] float NOT NULL,
-	[build_cost_vot_truck] float NOT NULL,
-	[benefit_vot_truck] float NOT NULL
+	[build_trips_base_vot_ctm] float NOT NULL,
+	[build_trips_build_vot_ctm] float NOT NULL,
+	[all_trips_benefit_vot_ctm] float NOT NULL,
+	[build_trips_base_vot_truck] float NOT NULL,
+	[build_trips_build_vot_truck] float NOT NULL,
+	[all_trips_benefit_vot_truck] float NOT NULL
 )
 AS
 
@@ -104,7 +104,8 @@ AS
 -- and input values of time for commercial travel model and truck model trips,
 -- returns table of value of time costs for the build scenario given build
 -- scenario travel times and base scenario travel times segmented by the
--- commercial travel model and truck model.
+-- commercial travel model and truck model and a benefits calculation of
+-- 1/2 * (all trips under base scenario travel times - all trips under build scenario travel times)
 --	[dbo].[run_aggregate_trips_comparison]
 --	[dbo].[run_aggregate_trips_processor]
 --	[dbo].[run_aggregate_trips_summary]
@@ -112,65 +113,111 @@ AS
 BEGIN
 	INSERT INTO @tbl_aggregate_trips
 	SELECT
-		SUM(CASE	WHEN [model_trip_description] = 'Commercial Vehicle'
-					THEN [base_cost_vot]
-					ELSE 0
-					END) AS [base_cost_vot_ctm]
-		,SUM(CASE	WHEN [model_trip_description] = 'Commercial Vehicle'
-					THEN [build_cost_vot]
-					ELSE 0
-					END) AS [build_cost_vot_ctm]
-		,SUM(CASE	WHEN [model_trip_description] = 'Commercial Vehicle'
-					THEN [base_cost_vot] - [build_cost_vot]
-					ELSE 0
-					END) AS [benefit_vot_ctm]
-		,SUM(CASE	WHEN [model_trip_description] = 'Truck'
-					THEN [base_cost_vot]
-					ELSE 0
-					END) AS [base_cost_vot_truck]
-		,SUM(CASE	WHEN [model_trip_description] = 'Truck'
-					THEN [build_cost_vot]
-					ELSE 0
-					END) AS [build_cost_vot_truck]
-		,SUM(CASE	WHEN [model_trip_description] = 'Truck'
-					THEN [base_cost_vot] - [build_cost_vot]
-					ELSE 0
-					END) AS [benefit_vot_truck]
+		-- build trips vot under base skims - Commercial Vehicle model
+		SUM(CASE	WHEN [scenario_id] = @scenario_id_build
+						AND [model_trip_description] = 'Commercial Vehicle'
+					THEN [alternate_cost_vot]
+					ELSE 0 END) AS [build_trips_base_vot_ctm]
+		-- build trips vot under build skims - Commercial Vehicle model
+		,SUM(CASE	WHEN [scenario_id] = @scenario_id_build
+						AND [model_trip_description] = 'Commercial Vehicle'
+					THEN [cost_vot]
+					ELSE 0 END) AS [build_trips_build_vot_ctm]
+		-- 1/2 * all trips vot under base skims minus all trips vot under build skims - Commercial Vehicle model
+		,-- all trips under base skims
+			SUM(CASE	WHEN [scenario_id] = @scenario_id_base
+							AND [model_trip_description] = 'Commercial Vehicle'
+						THEN [cost_vot]
+						WHEN [scenario_id] = @scenario_id_build
+							AND [model_trip_description] = 'Commercial Vehicle'
+						THEN [alternate_cost_vot]
+						ELSE NULL END
+		 -- all trips under build skims
+			- CASE	WHEN [scenario_id] = @scenario_id_base
+						AND [model_trip_description] = 'Commercial Vehicle'
+					THEN [alternate_cost_vot]
+					WHEN [scenario_id] = @scenario_id_build
+						AND [model_trip_description] = 'Commercial Vehicle'
+					THEN [cost_vot]
+					ELSE NULL END)
+			-- multiplied by 1/2
+			* .5 AS [all_trips_benefit_vot_ctm]
+		-- build trips vot under base skims - Truck model
+		,SUM(CASE	WHEN [scenario_id] = @scenario_id_build
+						AND [model_trip_description] = 'Truck'
+					THEN [alternate_cost_vot]
+					ELSE 0 END) AS [build_trips_base_vot_truck]
+		-- build trips vot under build skims - Truck model
+		,SUM(CASE	WHEN [scenario_id] = @scenario_id_build
+						AND [model_trip_description] = 'Truck'
+					THEN [cost_vot]
+					ELSE 0 END) AS [build_trips_build_vot_truck]
+		-- 1/2 * all trips vot under base skims minus all trips vot under build skims - Truck model
+		,-- all trips under base skims
+			SUM(CASE	WHEN [scenario_id] = @scenario_id_base
+							AND [model_trip_description] = 'Truck'
+						THEN [cost_vot]
+						WHEN [scenario_id] = @scenario_id_build
+							AND [model_trip_description] = 'Truck'
+						THEN [alternate_cost_vot]
+						ELSE NULL END
+		 -- all trips under build skims
+			- CASE	WHEN [scenario_id] = @scenario_id_base
+						AND [model_trip_description] = 'Truck'
+					THEN [alternate_cost_vot]
+					WHEN [scenario_id] = @scenario_id_build
+						AND [model_trip_description] = 'Truck'
+					THEN [cost_vot]
+					ELSE NULL END)
+			-- multiplied by 1/2
+			* .5 AS [all_trips_benefit_vot_truck]
 	FROM (
+		-- calculate trip value of time costs for base trips using base travel times
 		-- calculate trip value of time costs for build trips using build travel times
-		-- calculate trip value of time costs for build trips using base skims base travel times
-			-- note there are build trips without base skims built from base trips
-			-- calculate the cost per trip where only build trips with base skims are included
-			-- then multiply this cost per trip by the total number of build trips
+		-- calculate trip value of time costs for all trips using base/build skim travel times
+			-- note there are base/build trips without alternate scenario skim travel times
+			-- calculate the cost per base trip under build skims where
+				-- only base trips with alternate scenario travel times are included
+				-- then multiply this cost per trip by the total number of base trips
+			-- calculate the cost per build trip under base skims where
+				-- only build trips with alternate scenario travel times are included
+				-- then multiply this cost per trip by the total number of build trips
 		SELECT
-			[trips_build].[model_trip_description]
-			,SUM([trips_build].[weight_trip] * [trips_build].[time_total] *
-					CASE	WHEN [trips_build].[model_trip_description] = 'Commercial Vehicle'
+			[trips_ctm_truck].[scenario_id]
+			,[trips_ctm_truck].[model_trip_description]
+			--trip value of time cost for trips with their own skims
+			,SUM([trips_ctm_truck].[weight_trip] * [trips_ctm_truck].[time_total] *
+					CASE	WHEN [trips_ctm_truck].[model_trip_description] = 'Commercial Vehicle'
 							THEN @vot_ctm / 60
-							WHEN [trips_build].[model_trip_description] = 'Truck'
+							WHEN [trips_ctm_truck].[model_trip_description] = 'Truck'
 							THEN @vot_truck / 60
-							ELSE NULL END) AS [build_cost_vot]
-			,-- trip value of time cost for build trip with base skims
-				(SUM([trips_build].[weight_trip] * ISNULL([auto_skims_base].[time_total], 0) *
-						CASE	WHEN [trips_build].[model_trip_description] = 'Commercial Vehicle'
+							ELSE NULL END) AS [cost_vot]
+			,-- trip value of time cost for trips with alternative skims
+				(SUM([trips_ctm_truck].[weight_trip] * ISNULL([auto_skims].[time_total], 0) *
+						CASE	WHEN [trips_ctm_truck].[model_trip_description] = 'Commercial Vehicle'
 								THEN @vot_ctm / 60
-								WHEN [trips_build].[model_trip_description] = 'Truck'
+								WHEN [trips_ctm_truck].[model_trip_description] = 'Truck'
 								THEN @vot_truck / 60
 								ELSE NULL END)
-				-- divided by number of build trips with base skims
-				/ SUM(CASE	WHEN [auto_skims_base].[time_total] IS NOT NULL
-							THEN [trips_build].[weight_trip]
+				-- divided by number of trips
+				/ SUM(CASE	WHEN [auto_skims].[time_total] IS NOT NULL
+							THEN [trips_ctm_truck].[weight_trip]
 							ELSE 0 END))
-				-- multiplied by the total number of build trips
-				* SUM([trips_build].[weight_trip]) AS [base_cost_vot]
+				-- multiplied by the total number of trips
+				* SUM([trips_ctm_truck].[weight_trip]) AS [alternate_cost_vot]
 		FROM (
-			-- get build trip list for Commercial Vehicle and Truck models
-			-- to be matched with skims from base scenario
+			-- get base and build trip list for Commercial Vehicle and Truck models
+			-- to be matched with skims from base and build scenario
+			-- match base trips with build skims and vice versa
 			-- note these models only use auto skims
 			SELECT
-				[model_trip].[model_trip_description]
+				[person_trip].[scenario_id]
+				,[model_trip].[model_trip_description]
 				,[geography_trip_origin].[trip_origin_taz_13]
 				,[geography_trip_destination].[trip_destination_taz_13]
+				-- all trip modes are directly mapped to assignment modes for auto
+                -- excepting all ctm modes, the airport model taxi mode, and the
+                -- individual model school bus mode
 				,CASE	WHEN [mode_trip].[mode_trip_description] = 'Heavy Truck - Non-Toll'
 						THEN 'Heavy Heavy Duty Truck (Non-Toll)'
 						WHEN [mode_trip].[mode_trip_description] = 'Heavy Truck - Toll'
@@ -187,6 +234,10 @@ BEGIN
 						THEN 'Medium Heavy Duty Truck (Non-Toll)'
 						WHEN [mode_trip].[mode_trip_description] = 'Medium Truck - Toll'
 						THEN 'Medium Heavy Duty Truck (Toll)'
+						WHEN [mode_trip].[mode_trip_description] = 'School Bus'
+						THEN 'Drive Alone Non-Toll' -- TODO Wu to alter data exporter to use SR3 Non-Toll for School Bus
+						WHEN [mode_trip].[mode_trip_description] = 'Taxi'
+						THEN 'Drive Alone Non-Toll' -- TODO Wu to alter data exporter to use SR2 Toll Eligible for Taxi
 						ELSE [mode_trip].[mode_trip_description]
 						END AS [assignment_mode] -- recode trip modes to assignment modes
 				,[value_of_time_drive_bin_id]
@@ -216,18 +267,18 @@ BEGIN
 			ON
 				[person_trip].[time_trip_start_id] = [time_trip_start].[time_trip_start_id]
 			WHERE
-				[person_trip].[scenario_id] = @scenario_id_build
+				[person_trip].[scenario_id] IN (@scenario_id_base, @scenario_id_build)
 				AND [model_trip].[model_trip_description] IN ('Commercial Vehicle',
-																'Truck') -- Commercial Vehicle and Truck models only, these models use auto modes only
-		) AS [trips_build]
+															  'Truck') -- Commercial Vehicle and Truck models only, these models use auto modes only
+		) AS [trips_ctm_truck]
 		LEFT OUTER JOIN (
-			-- create base scenario auto skims from person trips table
+			-- create base and build scenario auto skims from person trips table
 			-- skims are segmented by taz-taz, assignment mode, value of time bin, and ABM five time of day
 			-- if a trip is not present in the person trips table corresponding to a skim then the skim
 			-- is not present here
-			-- TODO confirm trip mode to assignment mode mappings for CTM and add in school bus and taxi?
 			SELECT
-				[geography_trip_origin].[trip_origin_taz_13]
+				[person_trip].[scenario_id]
+				,[geography_trip_origin].[trip_origin_taz_13]
 				,[geography_trip_destination].[trip_destination_taz_13]
 				,CASE	WHEN [mode_trip].[mode_trip_description] = 'Heavy Truck - Non-Toll'
 						THEN 'Heavy Heavy Duty Truck (Non-Toll)'
@@ -245,6 +296,10 @@ BEGIN
 						THEN 'Medium Heavy Duty Truck (Non-Toll)'
 						WHEN [mode_trip].[mode_trip_description] = 'Medium Truck - Toll'
 						THEN 'Medium Heavy Duty Truck (Toll)'
+						WHEN [mode_trip].[mode_trip_description] = 'School Bus'
+						THEN 'Drive Alone Non-Toll' -- TODO Wu to alter data exporter to use SR3 Non-Toll for School Bus
+						WHEN [mode_trip].[mode_trip_description] = 'Taxi'
+						THEN 'Drive Alone Non-Toll' -- TODO Wu to alter data exporter to use SR2 Toll Eligible for Taxi
 						ELSE [mode_trip].[mode_trip_description]
 						END AS [assignment_mode] -- recode trip modes to assignment modes
 				,[value_of_time_drive_bin_id]
@@ -269,7 +324,7 @@ BEGIN
 			ON
 				[person_trip].[time_trip_start_id] = [time_trip_start].[time_trip_start_id]
 			WHERE
-				[person_trip].[scenario_id] = @scenario_id_base
+				[person_trip].[scenario_id] IN (@scenario_id_base, @scenario_id_build)
 				AND [mode_trip].[mode_trip_description] IN ('Drive Alone Non-Toll',
 															'Drive Alone Toll Eligible',
 															'Heavy Heavy Duty Truck (Non-Toll)',
@@ -286,12 +341,15 @@ BEGIN
 															'Medium Heavy Duty Truck (Toll)',
 															'Medium Truck - Non-Toll',
 															'Medium Truck - Toll',
+															'School Bus',
 															'Shared Ride 2 Non-Toll',
 															'Shared Ride 2 Toll Eligible',
 															'Shared Ride 3 Non-Toll',
-															'Shared Ride 3 Toll Eligible') -- auto modes
+															'Shared Ride 3 Toll Eligible',
+															'Taxi') -- auto modes
 			GROUP BY
-				[geography_trip_origin].[trip_origin_taz_13]
+				[person_trip].[scenario_id]
+				,[geography_trip_origin].[trip_origin_taz_13]
 				,[geography_trip_destination].[trip_destination_taz_13]
 				,CASE	WHEN [mode_trip].[mode_trip_description] = 'Heavy Truck - Non-Toll'
 						THEN 'Heavy Heavy Duty Truck (Non-Toll)'
@@ -309,21 +367,27 @@ BEGIN
 						THEN 'Medium Heavy Duty Truck (Non-Toll)'
 						WHEN [mode_trip].[mode_trip_description] = 'Medium Truck - Toll'
 						THEN 'Medium Heavy Duty Truck (Toll)'
+						WHEN [mode_trip].[mode_trip_description] = 'School Bus'
+						THEN 'Drive Alone Non-Toll' -- TODO Wu to alter data exporter to use SR3 Non-Toll for School Bus
+						WHEN [mode_trip].[mode_trip_description] = 'Taxi'
+						THEN 'Drive Alone Non-Toll' -- TODO Wu to alter data exporter to use SR2 Toll Eligible for Taxi
 						ELSE [mode_trip].[mode_trip_description]
 						END
 				,[value_of_time_drive_bin_id]
 				,[time_trip_start].[trip_start_abm_5_tod]
 			HAVING
 				SUM([person_trip].[weight_person_trip]) > 0
-		) AS [auto_skims_base]
+		) AS [auto_skims]
 		ON
-			[trips_build].[trip_origin_taz_13] = [auto_skims_base].[trip_origin_taz_13]
-			AND [trips_build].[trip_destination_taz_13] = [auto_skims_base].[trip_destination_taz_13]
-			AND [trips_build].[assignment_mode] = [auto_skims_base].[assignment_mode]
-			AND [trips_build].[value_of_time_drive_bin_id] = [auto_skims_base].[value_of_time_drive_bin_id]
-			AND [trips_build].[trip_start_abm_5_tod] = [auto_skims_base].[trip_start_abm_5_tod]
+			[trips_ctm_truck].[scenario_id] != [auto_skims].[scenario_id] -- match base trips with build skims and vice versa
+			AND [trips_ctm_truck].[trip_origin_taz_13] = [auto_skims].[trip_origin_taz_13]
+			AND [trips_ctm_truck].[trip_destination_taz_13] = [auto_skims].[trip_destination_taz_13]
+			AND [trips_ctm_truck].[assignment_mode] = [auto_skims].[assignment_mode]
+			AND [trips_ctm_truck].[value_of_time_drive_bin_id] = [auto_skims].[value_of_time_drive_bin_id]
+			AND [trips_ctm_truck].[trip_start_abm_5_tod] = [auto_skims].[trip_start_abm_5_tod]
 		GROUP BY
-			[trips_build].[model_trip_description]
+			[trips_ctm_truck].[scenario_id]
+			,[trips_ctm_truck].[model_trip_description]
 	) AS [result_table]
 	RETURN
 END
@@ -331,7 +395,7 @@ GO
 
 -- Add metadata for [bca].[fn_aggregate_trips]
 EXECUTE [db_meta].[add_xp] 'bca.fn_aggregate_trips', 'SUBSYSTEM', 'bca'
-EXECUTE [db_meta].[add_xp] 'bca.fn_aggregate_trips', 'MS_Description', 'function to return aggregate trips value of time costs for build scenario under build and base travel times'
+EXECUTE [db_meta].[add_xp] 'bca.fn_aggregate_trips', 'MS_Description', 'function to return aggregate trips value of time costs under alternative skims'
 GO
 
 
