@@ -1219,14 +1219,13 @@ BEGIN
 			-- this includes Individual, Internal-External, and Joint models
 			-- restrict to active transportation modes (Bike, Walk)
 			-- skims are segmented by mgra-mgra and assignment mode
-			-- include taz-taz od pairs to account for external zones
+			-- the geography surrogate keys include taz-taz od pairs to account for external zones
 			SELECT
 				[person_trip].[scenario_id]
 				,[purpose_tour].[purpose_tour_description]
-				,[geography_trip_origin].[trip_origin_mgra_13]
-				,[geography_trip_destination].[trip_destination_mgra_13]
-				,[geography_trip_origin].[trip_origin_taz_13]
-				,[geography_trip_destination].[trip_destination_taz_13]
+				-- at trips match at skims geographies, no need for aggregation
+				,[person_trip].[geography_trip_origin_id]
+				,[person_trip].[geography_trip_destination_id]
 				-- all trip modes are directly mapped to assignment modes for
 				-- active transportation assignment modes
 				,[mode_trip].[mode_trip_description] AS [assignment_mode]
@@ -1251,14 +1250,6 @@ BEGIN
 				[dimension].[purpose_tour]
 			ON
 				[tour].[purpose_tour_id] = [purpose_tour].[purpose_tour_id]
-			INNER JOIN
-				[dimension].[geography_trip_origin]
-			ON
-				[person_trip].[geography_trip_origin_id] = [geography_trip_origin].[geography_trip_origin_id]
-			INNER JOIN
-				[dimension].[geography_trip_destination]
-			ON
-				[person_trip].[geography_trip_destination_id] = [geography_trip_destination].[geography_trip_destination_id]
 			WHERE
 				[person_trip].[scenario_id] IN (@scenario_id_base, @scenario_id_build)
 				AND [tour].[scenario_id] IN (@scenario_id_base, @scenario_id_build)
@@ -1272,15 +1263,14 @@ BEGIN
 		LEFT OUTER JOIN (
 					-- create base and build scenario active transportation skims from person trips table
 					-- skims are segmented by mgra-mgra and assignment mode
-					-- include taz-taz od pairs to account for external zones
+					-- the geography surrogate keys include taz-taz od pairs to account for external zones
 					-- if a trip is not present in the person trips table corresponding to a skim then the skim
 					-- is not present here
 					SELECT
 						[person_trip].[scenario_id]
-						,[geography_trip_origin].[trip_origin_mgra_13]
-						,[geography_trip_destination].[trip_destination_mgra_13]
-						,[geography_trip_origin].[trip_origin_taz_13]
-						,[geography_trip_destination].[trip_destination_taz_13]
+						-- at trips match at skims geographies, no need for aggregation
+						,[person_trip].[geography_trip_origin_id]
+						,[person_trip].[geography_trip_destination_id]
 						-- all trip modes are directly mapped to assignment modes for
 						-- active transportation assignment modes
 						,[mode_trip].[mode_trip_description] AS [assignment_mode]
@@ -1291,43 +1281,23 @@ BEGIN
 						[dimension].[mode_trip]
 					ON
 						[person_trip].[mode_trip_id] = [mode_trip].[mode_trip_id]
-					INNER JOIN
-						[dimension].[geography_trip_origin]
-					ON
-						[person_trip].[geography_trip_origin_id] = [geography_trip_origin].[geography_trip_origin_id]
-					INNER JOIN
-						[dimension].[geography_trip_destination]
-					ON
-						[person_trip].[geography_trip_destination_id] = [geography_trip_destination].[geography_trip_destination_id]
 					WHERE
 						[person_trip].[scenario_id] IN (@scenario_id_base, @scenario_id_build)
 						-- active transportation modes only
 						AND [mode_trip].[mode_trip_description] IN ('Bike', 'Walk')
 					GROUP BY
 						[person_trip].[scenario_id]
-						,[geography_trip_origin].[trip_origin_mgra_13]
-						,[geography_trip_destination].[trip_destination_mgra_13]
-						,[geography_trip_origin].[trip_origin_taz_13]
-						,[geography_trip_destination].[trip_destination_taz_13]
+						,[person_trip].[geography_trip_origin_id]
+						,[person_trip].[geography_trip_destination_id]
 						,[mode_trip].[mode_trip_description]
 					HAVING
 						SUM([person_trip].[weight_person_trip]) > 0
 		) AS [at_skims]
 		ON
 			[at_resident_trips].[scenario_id] != [at_skims].[scenario_id] -- match base trips with build skims and vice versa
-			-- external zones have no mgras
-			AND (
-			    ([at_resident_trips].[trip_origin_mgra_13] != 'Not Applicable'
-			        AND [at_resident_trips].[trip_origin_mgra_13] = [at_skims].[trip_origin_mgra_13])
-			    OR ([at_resident_trips].[trip_origin_mgra_13] = 'Not Applicable'
-			        AND [at_resident_trips].[trip_origin_taz_13] = [at_skims].[trip_origin_taz_13])
-			    )
-			AND (
-			    ([at_resident_trips].[trip_destination_mgra_13] != 'Not Applicable'
-			        AND [at_resident_trips].[trip_destination_mgra_13] = [at_skims].[trip_destination_mgra_13])
-			    OR ([at_resident_trips].[trip_destination_mgra_13] = 'Not Applicable'
-			        AND [at_resident_trips].[trip_destination_taz_13] = [at_skims].[trip_destination_taz_13])
-			    )
+			-- at trips match at skims geographies, no need for aggregation
+			AND [at_resident_trips].[geography_trip_origin_id] = [at_skims].[geography_trip_origin_id]
+			AND [at_resident_trips].[geography_trip_destination_id] = [at_skims].[geography_trip_destination_id]
 			AND [at_resident_trips].[assignment_mode] = [at_skims].[assignment_mode]
 		GROUP BY
 			[at_resident_trips].[scenario_id]
