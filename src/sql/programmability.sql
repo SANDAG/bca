@@ -235,7 +235,7 @@ BEGIN
 						WHEN [mode_trip].[mode_trip_description] = 'Medium Truck - Toll'
 						THEN 'Medium Heavy Duty Truck (Toll)'
 						WHEN [mode_trip].[mode_trip_description] = 'School Bus'
-						THEN 'Drive Alone Non-Toll' -- TODO Wu to consider altering data exporter to use SR mode here
+						THEN 'Drive Alone Non-Toll' -- School Bus trips use Drive Alone Non-Toll skims
 						WHEN [mode_trip].[mode_trip_description] = 'Taxi'
 						THEN 'Shared Ride 2 Non-Toll' -- Taxi trips use Shared Ride 2 Non-Toll skims
 						ELSE [mode_trip].[mode_trip_description]
@@ -297,7 +297,7 @@ BEGIN
 						WHEN [mode_trip].[mode_trip_description] = 'Medium Truck - Toll'
 						THEN 'Medium Heavy Duty Truck (Toll)'
 						WHEN [mode_trip].[mode_trip_description] = 'School Bus'
-						THEN 'Drive Alone Non-Toll' -- TODO Wu to alter data exporter to use SR3 Non-Toll for School Bus
+						THEN 'Drive Alone Non-Toll' -- School Bus trips use Drive Alone Non-Toll skims
 						WHEN [mode_trip].[mode_trip_description] = 'Taxi'
 						THEN 'Shared Ride 2 Non-Toll' -- Taxi trips use Shared Ride 2 Non-Toll skims
 						ELSE [mode_trip].[mode_trip_description]
@@ -368,7 +368,7 @@ BEGIN
 						WHEN [mode_trip].[mode_trip_description] = 'Medium Truck - Toll'
 						THEN 'Medium Heavy Duty Truck (Toll)'
 						WHEN [mode_trip].[mode_trip_description] = 'School Bus'
-						THEN 'Drive Alone Non-Toll' -- TODO Wu to alter data exporter to use SR3 Non-Toll for School Bus
+						THEN 'Drive Alone Non-Toll' -- School Bus trips use Drive Alone Non-Toll skims
 						WHEN [mode_trip].[mode_trip_description] = 'Taxi'
 						THEN 'Shared Ride 2 Non-Toll' -- Taxi trips use Shared Ride 2 Non-Toll skims
 						ELSE [mode_trip].[mode_trip_description]
@@ -1448,7 +1448,7 @@ BEGIN
 						WHEN [mode_trip].[mode_trip_description] = 'Medium Truck - Toll'
 						THEN 'Medium Heavy Duty Truck (Toll)'
 						WHEN [mode_trip].[mode_trip_description] = 'School Bus'
-						THEN 'Drive Alone Non-Toll' -- TODO Wu to consider altering data exporter to use SR mode here
+						THEN 'Drive Alone Non-Toll' -- School Bus trips use Drive Alone Non-Toll skims
 						WHEN [mode_trip].[mode_trip_description] = 'Taxi'
 						THEN 'Shared Ride 2 Non-Toll' -- Taxi trips use Shared Ride 2 Non-Toll skims
 						ELSE [mode_trip].[mode_trip_description]
@@ -1545,7 +1545,7 @@ BEGIN
 						WHEN [mode_trip].[mode_trip_description] = 'Medium Truck - Toll'
 						THEN 'Medium Heavy Duty Truck (Toll)'
 						WHEN [mode_trip].[mode_trip_description] = 'School Bus'
-						THEN 'Drive Alone Non-Toll' -- TODO Wu to alter data exporter to use SR3 Non-Toll for School Bus
+						THEN 'Drive Alone Non-Toll' -- School Bus trips use Drive Alone Non-Toll skims
 						WHEN [mode_trip].[mode_trip_description] = 'Taxi'
 						THEN 'Shared Ride 2 Non-Toll' -- Taxi trips use Shared Ride 2 Non-Toll skims
 						ELSE [mode_trip].[mode_trip_description]
@@ -1616,7 +1616,7 @@ BEGIN
 						WHEN [mode_trip].[mode_trip_description] = 'Medium Truck - Toll'
 						THEN 'Medium Heavy Duty Truck (Toll)'
 						WHEN [mode_trip].[mode_trip_description] = 'School Bus'
-						THEN 'Drive Alone Non-Toll' -- TODO Wu to alter data exporter to use SR3 Non-Toll for School Bus
+						THEN 'Drive Alone Non-Toll' -- School Bus trips use Drive Alone Non-Toll skims
 						WHEN [mode_trip].[mode_trip_description] = 'Taxi'
 						THEN 'Shared Ride 2 Non-Toll' -- Taxi trips use Shared Ride 2 Non-Toll skims
 						ELSE [mode_trip].[mode_trip_description]
