@@ -235,9 +235,9 @@ BEGIN
 						WHEN [mode_trip].[mode_trip_description] = 'Medium Truck - Toll'
 						THEN 'Medium Heavy Duty Truck (Toll)'
 						WHEN [mode_trip].[mode_trip_description] = 'School Bus'
-						THEN 'Drive Alone Non-Toll' -- TODO Wu to alter data exporter to use SR3 Non-Toll for School Bus
+						THEN 'Drive Alone Non-Toll' -- TODO Wu to consider altering data exporter to use SR mode here
 						WHEN [mode_trip].[mode_trip_description] = 'Taxi'
-						THEN 'Drive Alone Non-Toll' -- TODO Wu to alter data exporter to use SR2 Toll Eligible for Taxi
+						THEN 'Shared Ride 2 Non-Toll' -- Taxi trips use Shared Ride 2 Non-Toll skims
 						ELSE [mode_trip].[mode_trip_description]
 						END AS [assignment_mode] -- recode trip modes to assignment modes
 				,[value_of_time_drive_bin_id]
@@ -299,7 +299,7 @@ BEGIN
 						WHEN [mode_trip].[mode_trip_description] = 'School Bus'
 						THEN 'Drive Alone Non-Toll' -- TODO Wu to alter data exporter to use SR3 Non-Toll for School Bus
 						WHEN [mode_trip].[mode_trip_description] = 'Taxi'
-						THEN 'Drive Alone Non-Toll' -- TODO Wu to alter data exporter to use SR2 Toll Eligible for Taxi
+						THEN 'Shared Ride 2 Non-Toll' -- Taxi trips use Shared Ride 2 Non-Toll skims
 						ELSE [mode_trip].[mode_trip_description]
 						END AS [assignment_mode] -- recode trip modes to assignment modes
 				,[value_of_time_drive_bin_id]
@@ -370,7 +370,7 @@ BEGIN
 						WHEN [mode_trip].[mode_trip_description] = 'School Bus'
 						THEN 'Drive Alone Non-Toll' -- TODO Wu to alter data exporter to use SR3 Non-Toll for School Bus
 						WHEN [mode_trip].[mode_trip_description] = 'Taxi'
-						THEN 'Drive Alone Non-Toll' -- TODO Wu to alter data exporter to use SR2 Toll Eligible for Taxi
+						THEN 'Shared Ride 2 Non-Toll' -- Taxi trips use Shared Ride 2 Non-Toll skims
 						ELSE [mode_trip].[mode_trip_description]
 						END
 				,[value_of_time_drive_bin_id]
