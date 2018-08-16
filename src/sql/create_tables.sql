@@ -67,11 +67,11 @@ CREATE TABLE [bca].[analysis_parameters] (
 	,[pm_10_value] float NULL
 	,[inflation_rate] float NULL
     ,[discount_rate] float NULL
-	,[coc_age_thresh] integer NULL
-	,[coc_race_thresh] integer NULL
-	,[coc_hinc_thresh] integer NULL
-	,[coc_poverty_thresh] float NULL
-	,[coc_hisp_thresh] integer NULL
+	--,[coc_age_thresh] integer NULL
+	--,[coc_race_thresh] integer NULL
+	--,[coc_hinc_thresh] integer NULL
+	--,[coc_poverty_thresh] float NULL
+	--,[coc_hisp_thresh] integer NULL
 	,[rel_ratio] float NULL
     ,CONSTRAINT [pk_analysis_parameters] PRIMARY KEY ([id])
     ,CONSTRAINT [fk_analysis_parameters_analysis] FOREIGN KEY ([analysis_id]) REFERENCES [bca].[analysis] ON UPDATE CASCADE ON DELETE CASCADE
