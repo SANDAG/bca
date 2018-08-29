@@ -1237,6 +1237,7 @@ BEGIN
             ,[mode_trip].[mode_trip_description] AS [assignment_mode]
             ,[person_trip].[time_total]
             ,[person_trip].[weight_trip]
+            ,[person_trip].[weight_person_trip]
         FROM
             [fact].[person_trip]
         INNER JOIN
@@ -1313,16 +1314,16 @@ BEGIN
             ,[at_resident_trips].[persons_senior]
             ,[at_resident_trips].[persons_minority]
             ,[at_resident_trips].[persons_low_income]
-            --trip value of time cost for trips with their own skims
-            ,SUM([at_resident_trips].[weight_trip] * [at_resident_trips].[time_total] *
+            -- person trip value of time cost for trips with their own skims
+            ,SUM([at_resident_trips].[weight_person_trip] * [at_resident_trips].[time_total] *
                     CASE	WHEN [at_resident_trips].[purpose_tour_description] = 'Work'
                             THEN @vot_commute / 60
                             WHEN [at_resident_trips].[purpose_tour_description] != 'Work'
                             THEN @vot_non_commute / 60
                             ELSE NULL END) AS [cost_vot]
-            -- trip value of time cost for trips with alternative skims
+            -- person trip value of time cost for trips with alternative skims
             -- substitute average alternative skim time for the trip if no alternative skim is present
-            ,(SUM([at_resident_trips].[weight_trip] * ISNULL([at_skims].[time_total], [avg_alternate_trip_time].[time_total_avg]) *
+            ,(SUM([at_resident_trips].[weight_person_trip] * ISNULL([at_skims].[time_total], [avg_alternate_trip_time].[time_total_avg]) *
                 CASE	WHEN [at_resident_trips].[purpose_tour_description] = 'Work'
                         THEN @vot_commute / 60
                         WHEN [at_resident_trips].[purpose_tour_description] != 'Work'
