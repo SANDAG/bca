@@ -1135,7 +1135,15 @@ CREATE FUNCTION [bca].[fn_resident_trips_at]
 )
 RETURNS @tbl_resident_trips_at TABLE
 (
-	[all_benefit_vot] float NOT NULL
+	[person_trips] float NOT NULL
+	,[base_person_trips] float NOT NULL
+	,[build_person_trips] float NOT NULL
+	,[coc_person_trips] float NOT NULL
+	,[base_coc_person_trips] float NOT NULL
+	,[build_coc_person_trips] float NOT NULL
+	,[benefit_vot] float NOT NULL
+	,[base_vot] float NOT NULL
+	,[build_vot] float NOT NULL
 	,[work_benefit_vot] float NOT NULL
 	,[non_work_benefit_vot] float NOT NULL
 	,[work_coc_benefit_vot] float NOT NULL
@@ -1329,6 +1337,7 @@ BEGIN
                         WHEN [at_resident_trips].[purpose_tour_description] != 'Work'
                         THEN @vot_non_commute / 60
                         ELSE NULL END)) AS [alternate_cost_vot]
+			,SUM([at_resident_trips].[weight_person_trip]) AS [person_trips]
         FROM
             [at_resident_trips]
         LEFT OUTER JOIN
@@ -1353,7 +1362,25 @@ BEGIN
     )
     INSERT INTO @tbl_resident_trips_at
     SELECT
-        -- 1/2 * all trips vot under base skims minus all trips vot under build skims
+		SUM([person_trips]) AS [person_trips]
+		,SUM(CASE	WHEN [scenario_id] = @scenario_id_base
+                    THEN [person_trips]
+					ELSE 0 END) AS [base_person_trips]
+		,SUM(CASE	WHEN [scenario_id] = @scenario_id_build
+                    THEN [person_trips]
+					ELSE 0 END) AS [build_person_trips]
+		,SUM(CASE	WHEN [persons_coc] = 1
+					THEN [person_trips]
+					ELSE 0 END) AS [coc_person_trips]
+		,SUM(CASE	WHEN [scenario_id] = @scenario_id_base
+						AND [persons_coc] = 1
+                    THEN [person_trips]
+					ELSE 0 END) AS [base_coc_person_trips]
+		,SUM(CASE	WHEN [scenario_id] = @scenario_id_build
+						AND [persons_coc] = 1
+                    THEN [person_trips]
+					ELSE 0 END) AS [build_coc_person_trips]
+        ,-- 1/2 * all trips vot under base skims minus all trips vot under build skims
         -- all trips under base skims
         SUM(CASE	WHEN [scenario_id] = @scenario_id_base
                     THEN [cost_vot]
@@ -1367,7 +1394,25 @@ BEGIN
                 THEN [cost_vot]
                 ELSE NULL END)
         -- multiplied by 1/2
-        * .5 AS [all_benefit_vot]
+        * .5 AS [benefit_vot]
+		,-- 1/2 * all trips vot under base skims
+        -- all trips under base skims
+        SUM(CASE	WHEN [scenario_id] = @scenario_id_base
+                    THEN [cost_vot]
+                    WHEN [scenario_id] = @scenario_id_build
+                    THEN [alternate_cost_vot]
+                    ELSE NULL END)
+        -- multiplied by 1/2
+        * .5 AS [base_vot]
+		,-- 1/2 * all trips vot under build skims
+        -- all trips under base skims
+        SUM(CASE	WHEN [scenario_id] = @scenario_id_base
+					THEN [alternate_cost_vot]
+					WHEN [scenario_id] = @scenario_id_build
+					THEN [cost_vot]
+					ELSE NULL END)
+        -- multiplied by 1/2
+        * .5 AS [build_vot]
         ,-- 1/2 * work trips vot under base skims minus work trips vot under build skims
         -- work trips under base skims
         SUM(CASE	WHEN [scenario_id] = @scenario_id_base
@@ -1618,7 +1663,15 @@ CREATE FUNCTION [bca].[fn_resident_trips_auto]
 )
 RETURNS @tbl_resident_trips_auto TABLE
 (
-	[all_benefit_vot] float NOT NULL
+	[person_trips] float NOT NULL
+	,[base_person_trips] float NOT NULL
+	,[build_person_trips] float NOT NULL
+	,[coc_person_trips] float NOT NULL
+	,[base_coc_person_trips] float NOT NULL
+	,[build_coc_person_trips] float NOT NULL
+	,[benefit_vot] float NOT NULL
+	,[base_vot] float NOT NULL
+	,[build_vot] float NOT NULL
 	,[work_benefit_vot] float NOT NULL
 	,[non_work_benefit_vot] float NOT NULL
 	,[work_coc_benefit_vot] float NOT NULL
@@ -1956,6 +2009,7 @@ BEGIN
 						WHEN [auto_resident_trips].[purpose_tour_description] != 'Work'
 						THEN @vot_non_commute / 60
 						ELSE NULL END)) AS [alternate_cost_vot]
+			,SUM([auto_resident_trips].[weight_person_trip]) AS [person_trips]
 		FROM
 			[auto_resident_trips]
 		LEFT OUTER JOIN
@@ -1982,21 +2036,57 @@ BEGIN
 	)
 	INSERT INTO @tbl_resident_trips_auto
 	SELECT
-		-- 1/2 * all trips vot under base skims minus all trips vot under build skims
-		-- all trips under base skims
-		SUM(CASE	WHEN [scenario_id] = @scenario_id_base
-					THEN [cost_vot]
-					WHEN [scenario_id] = @scenario_id_build
+		SUM([person_trips]) AS [person_trips]
+		,SUM(CASE	WHEN [scenario_id] = @scenario_id_base
+                    THEN [person_trips]
+					ELSE 0 END) AS [base_person_trips]
+		,SUM(CASE	WHEN [scenario_id] = @scenario_id_build
+                    THEN [person_trips]
+					ELSE 0 END) AS [build_person_trips]
+		,SUM(CASE	WHEN [persons_coc] = 1
+					THEN [person_trips]
+					ELSE 0 END) AS [coc_person_trips]
+		,SUM(CASE	WHEN [scenario_id] = @scenario_id_base
+						AND [persons_coc] = 1
+                    THEN [person_trips]
+					ELSE 0 END) AS [base_coc_person_trips]
+		,SUM(CASE	WHEN [scenario_id] = @scenario_id_build
+						AND [persons_coc] = 1
+                    THEN [person_trips]
+					ELSE 0 END) AS [build_coc_person_trips]
+        ,-- 1/2 * all trips vot under base skims minus all trips vot under build skims
+        -- all trips under base skims
+        SUM(CASE	WHEN [scenario_id] = @scenario_id_base
+                    THEN [cost_vot]
+                    WHEN [scenario_id] = @scenario_id_build
+                    THEN [alternate_cost_vot]
+                    ELSE NULL END
+        -- all trips under build skims
+        - CASE	WHEN [scenario_id] = @scenario_id_base
+                THEN [alternate_cost_vot]
+                WHEN [scenario_id] = @scenario_id_build
+                THEN [cost_vot]
+                ELSE NULL END)
+        -- multiplied by 1/2
+        * .5 AS [benefit_vot]
+		,-- 1/2 * all trips vot under base skims
+        -- all trips under base skims
+        SUM(CASE	WHEN [scenario_id] = @scenario_id_base
+                    THEN [cost_vot]
+                    WHEN [scenario_id] = @scenario_id_build
+                    THEN [alternate_cost_vot]
+                    ELSE NULL END)
+        -- multiplied by 1/2
+        * .5 AS [base_vot]
+		,-- 1/2 * all trips vot under build skims
+        -- all trips under base skims
+        SUM(CASE	WHEN [scenario_id] = @scenario_id_base
 					THEN [alternate_cost_vot]
-					ELSE NULL END
-		-- all trips under build skims
-		- CASE	WHEN [scenario_id] = @scenario_id_base
-				THEN [alternate_cost_vot]
-				WHEN [scenario_id] = @scenario_id_build
-				THEN [cost_vot]
-				ELSE NULL END)
-		-- multiplied by 1/2
-		* .5 AS [all_benefit_vot]
+					WHEN [scenario_id] = @scenario_id_build
+					THEN [cost_vot]
+					ELSE NULL END)
+        -- multiplied by 1/2
+        * .5 AS [build_vot]
 		,-- 1/2 * work trips vot under base skims minus work trips vot under build skims
 		-- work trips under base skims
 		SUM(CASE	WHEN [scenario_id] = @scenario_id_base
