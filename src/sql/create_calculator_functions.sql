@@ -1649,6 +1649,7 @@ GO
 
 
 
+
 -- Create auto resident trips table valued function
 IF  EXISTS (SELECT * FROM sys.objects WHERE object_id = OBJECT_ID(N'[bca].[fn_resident_trips_auto]') AND type in (N'FN', N'IF', N'TF', N'FS', N'FT'))
 DROP FUNCTION [bca].[fn_resident_trips_auto]
@@ -2391,9 +2392,35 @@ CREATE FUNCTION [bca].[fn_resident_trips_transit]
 )
 RETURNS @tbl_resident_trips_transit TABLE
 (
-	[build_at_trips_base_vot] float NOT NULL,
-	[build_at_trips_build_vot] float NOT NULL,
-	[all_at_trips_benefit_vot] float NOT NULL
+	[person_trips] float NOT NULL
+	,[base_person_trips] float NOT NULL
+	,[build_person_trips] float NOT NULL
+	,[coc_person_trips] float NOT NULL
+	,[base_coc_person_trips] float NOT NULL
+	,[build_coc_person_trips] float NOT NULL
+	,[benefit_vot] float NOT NULL
+	,[base_vot] float NOT NULL
+	,[build_vot] float NOT NULL
+	,[work_benefit_vot] float NOT NULL
+	,[non_work_benefit_vot] float NOT NULL
+	,[work_coc_benefit_vot] float NOT NULL
+	,[non_work_coc_benefit_vot] float NOT NULL
+	,[work_senior_benefit_vot] float NOT NULL
+	,[non_work_senior_benefit_vot] float NOT NULL
+	,[work_minority_benefit_vot] float NOT NULL
+	,[non_work_minority_benefit_vot] float NOT NULL
+	,[work_low_income_benefit_vot] float NOT NULL
+	,[non_work_low_income_benefit_vot] float NOT NULL
+	,[base_cost_transit] float NOT NULL
+	,[build_cost_transit] float NOT NULL
+	,[work_base_cost_transit] float NOT NULL
+	,[work_build_cost_transit] float NOT NULL
+	,[non_work_base_cost_transit] float NOT NULL
+	,[non_work_build_cost_transit] float NOT NULL
+	,[work_coc_base_cost_transit] float NOT NULL
+	,[work_coc_build_cost_transit] float NOT NULL
+	,[non_work_coc_base_cost_transit] float NOT NULL
+	,[non_work_coc_build_cost_transit] float NOT NULL
 )
 AS
 -- ===========================================================================
@@ -2425,6 +2452,26 @@ BEGIN
 		SELECT
 			[person_trip].[scenario_id]
 			,[purpose_tour].[purpose_tour_description]
+			,CASE	WHEN [person].[age] >= 75 THEN [person].[weight_person]
+					WHEN [person].[race] IN ('Some Other Race Alone',
+												'Asian Alone',
+												'Black or African American Alone',
+												'Two or More Major Race Groups',
+												'Native Hawaiian and Other Pacific Islander Alone',
+												'American Indian and Alaska Native Tribes specified; or American Indian or Alaska Native, not specified and no other races')
+							OR [person].[hispanic] = 'Hispanic' THEN [person].[weight_person]
+					WHEN [household].[poverty] <= 2 THEN [person].[weight_person]
+					ELSE 0 END AS [persons_coc]
+			,CASE WHEN [person].[age] >= 75 THEN [person].[weight_person] ELSE 0 END AS [persons_senior]
+			,CASE	WHEN [person].[race] IN ('Some Other Race Alone',
+												'Asian Alone',
+												'Black or African American Alone',
+												'Two or More Major Race Groups',
+												'Native Hawaiian and Other Pacific Islander Alone',
+												'American Indian and Alaska Native Tribes specified; or American Indian or Alaska Native, not specified and no other races')
+						OR [person].[hispanic] = 'Hispanic' THEN [person].[weight_person]
+					ELSE 0 END AS [persons_minority]
+			,CASE WHEN [household].[poverty] <= 2 THEN [person].[weight_person] ELSE 0 END AS [persons_low_income]
 			-- at trips match at skims geographies, no need for aggregation
 			,[person_trip].[geography_trip_origin_id]
 			,[person_trip].[geography_trip_destination_id]
@@ -2444,6 +2491,8 @@ BEGIN
 				AS [time_transit_out_vehicle]
 			,[person_trip].[time_total]
 			,[person_trip].[weight_trip]
+			,[person_trip].[weight_person_trip]
+			,[person_trip].[cost_transit]
 		FROM
 			[fact].[person_trip]
 		INNER JOIN
@@ -2464,6 +2513,16 @@ BEGIN
 		ON
 			[tour].[purpose_tour_id] = [purpose_tour].[purpose_tour_id]
 		INNER JOIN
+			[dimension].[household]
+		ON
+			[person_trip].[scenario_id] = [household].[scenario_id]
+			AND [person_trip].[household_id] = [household].[household_id]
+		INNER JOIN
+			[dimension].[person]
+		ON
+			[person_trip].[scenario_id] = [person].[scenario_id]
+			AND [person_trip].[person_id] = [person].[person_id]
+		INNER JOIN
 			[dimension].[geography_trip_origin]
 		ON
 			[person_trip].[geography_trip_origin_id] = [geography_trip_origin].[geography_trip_origin_id]
@@ -2478,10 +2537,12 @@ BEGIN
 		WHERE
 			[person_trip].[scenario_id] IN (@scenario_id_base, @scenario_id_build)
 			AND [tour].[scenario_id] IN (@scenario_id_base, @scenario_id_build)
-				-- resident trips that use synthetic population
+			AND [household].[scenario_id] IN (@scenario_id_base, @scenario_id_build)
+			AND [person].[scenario_id] IN (@scenario_id_base, @scenario_id_build)
+			-- resident trips that use synthetic population
 			AND [model_trip].[model_trip_description] IN ('Individual',
-														  'Internal-External',
-														  'Joint')
+															'Internal-External',
+															'Joint')
 			-- transit modes only
 			AND [mode_trip].[mode_trip_description] IN ('Kiss and Ride to Transit - Local Bus and Premium Transit',
 														'Kiss and Ride to Transit - Local Bus Only',
@@ -2617,70 +2678,56 @@ BEGIN
 			SUM([person_trip].[weight_person_trip]) > 0
 			AND SUM(([person_trip].[weight_person_trip] * [person_trip].[time_total])) > 0
 	),
-	[trips_matched_skims] AS (
+	[avg_alternate_trip_time] AS (
 		SELECT
 			[transit_resident_trips].[scenario_id]
-			,[transit_resident_trips].[weight_trip]
-			-- the base/build scenario vot cost using their own skim values
-			-- weight out of vehicle transit time using input parameter
-			,[transit_resident_trips].[weight_trip]
-				* (@ovt_weight * [transit_resident_trips].[time_transit_out_vehicle] + [transit_resident_trips].[time_transit_in_vehicle])
-				* CASE	WHEN [transit_resident_trips].[purpose_tour_description] = 'Work'
-						THEN @vot_commute / 60
-						WHEN [transit_resident_trips].[purpose_tour_description] != 'Work'
-						THEN @vot_non_commute / 60
-						ELSE NULL END AS [cost_vot]
-			-- the base/build scenario vot cost using alternate scenario skim values
-			,CASE
-					-- the base/build scenario vot cost using alternate scenario skim values
-					-- only where there exists an alternate scenario skim value
-					-- weight out of vehicle transit time using input parameter
-					WHEN [transit_skims].[time_transit_out_vehicle] IS NOT NULL
-						AND [transit_skims].[time_transit_in_vehicle] IS NOT NULL
-					THEN [transit_resident_trips].[weight_trip]
-							* (@ovt_weight * [transit_skims].[time_transit_out_vehicle] + [transit_skims].[time_transit_in_vehicle])
-							* CASE	WHEN [transit_resident_trips].[purpose_tour_description] = 'Work'
-									THEN @vot_commute / 60
-									WHEN [transit_resident_trips].[purpose_tour_description] != 'Work'
-									THEN @vot_non_commute / 60
-									ELSE NULL END
-					-- the build scenario vot cost using estimated alternate scenario skim values
-					-- for the drive to transit modes
-					-- only where there exists an estimated alternate scenario skim value
-					-- cannot weight out of vehicle time as the estimate is for total time only
-					WHEN [transit_resident_trips].[scenario_id] = @scenario_id_build
-						AND ([transit_skims].[time_transit_out_vehicle] IS NULL OR [transit_skims].[time_transit_in_vehicle] IS NULL)
-						AND [transit_resident_trips].[assignment_mode] IN ('Kiss and Ride to Transit - Local Bus and Premium Transit',
-																		   'Kiss and Ride to Transit - Local Bus Only',
-																		   'Kiss and Ride to Transit - Premium Transit Only',
-																		   'Park and Ride to Transit - Local Bus and Premium Transit',
-																		   'Park and Ride to Transit - Local Bus Only',
-																		   'Park and Ride to Transit - Premium Transit Only')
-					THEN [transit_resident_trips].[weight_trip]
-							* [estimated_base_transit_skims].[estimated_drive_transit_time_total]
-							* CASE	WHEN [transit_resident_trips].[purpose_tour_description] = 'Work'
-									THEN @vot_commute / 60
-									WHEN [transit_resident_trips].[purpose_tour_description] != 'Work'
-									THEN @vot_non_commute / 60
-									ELSE NULL END
-					-- the build scenario vot cost using estimated alternate scenario skim values
-					-- for the walk to transit modes
-					-- only where there exists an estimated alternate scenario skim value
-					-- cannot weight out of vehicle time as the estimate is for total time only
-					WHEN [transit_resident_trips].[scenario_id] = @scenario_id_build
-						AND ([transit_skims].[time_transit_out_vehicle] IS NULL OR [transit_skims].[time_transit_in_vehicle] IS NULL)
-						AND [transit_resident_trips].[assignment_mode] IN ('Walk to Transit - Local Bus and Premium Transit',
-																		   'Walk to Transit - Local Bus Only',
-																		   'Walk to Transit - Premium Transit Only')
-					THEN [transit_resident_trips].[weight_trip]
-							* [estimated_base_transit_skims].[estimated_walk_transit_time_total]
-							* CASE	WHEN [transit_resident_trips].[purpose_tour_description] = 'Work'
-									THEN @vot_commute / 60
-									WHEN [transit_resident_trips].[purpose_tour_description] != 'Work'
-									THEN @vot_non_commute / 60
-									ELSE NULL END
-					ELSE NULL
-					END AS [alternate_cost_vot]
+			-- the average base/build scenario travel time using alternate scenario skim values
+			-- get the base/build scenario travel time using alternate scenario skim values
+			,SUM(CASE
+				-- the base/build scenario travel time using alternate scenario skim values
+				-- only where there exists an alternate scenario skim value
+				-- weight out of vehicle transit time using input parameter
+				WHEN [transit_skims].[time_transit_out_vehicle] IS NOT NULL
+					AND [transit_skims].[time_transit_in_vehicle] IS NOT NULL
+				THEN [transit_resident_trips].[weight_trip]
+						* (@ovt_weight * [transit_skims].[time_transit_out_vehicle] + [transit_skims].[time_transit_in_vehicle])
+				-- the build scenario travel time using estimated alternate scenario skim values
+				-- for the drive to transit modes
+				-- only where there exists an estimated alternate scenario skim value
+				-- cannot weight out of vehicle time as the estimate is for total time only
+				WHEN [transit_resident_trips].[scenario_id] = @scenario_id_build
+					AND ([transit_skims].[time_transit_out_vehicle] IS NULL OR [transit_skims].[time_transit_in_vehicle] IS NULL)
+					AND [estimated_base_transit_skims].[estimated_drive_transit_time_total] IS NOT NULL
+					AND [transit_resident_trips].[assignment_mode] IN ('Kiss and Ride to Transit - Local Bus and Premium Transit',
+																		'Kiss and Ride to Transit - Local Bus Only',
+																		'Kiss and Ride to Transit - Premium Transit Only',
+																		'Park and Ride to Transit - Local Bus and Premium Transit',
+																		'Park and Ride to Transit - Local Bus Only',
+																		'Park and Ride to Transit - Premium Transit Only')
+				THEN [transit_resident_trips].[weight_trip]
+						* [estimated_base_transit_skims].[estimated_drive_transit_time_total]
+				-- the build scenario travel time using estimated alternate scenario skim values
+				-- for the walk to transit modes
+				-- only where there exists an estimated alternate scenario skim value
+				-- cannot weight out of vehicle time as the estimate is for total time only
+				WHEN [transit_resident_trips].[scenario_id] = @scenario_id_build
+					AND ([transit_skims].[time_transit_out_vehicle] IS NULL OR [transit_skims].[time_transit_in_vehicle] IS NULL)
+					AND [estimated_base_transit_skims].[estimated_walk_transit_time_total] IS NOT NULL
+					AND [transit_resident_trips].[assignment_mode] IN ('Walk to Transit - Local Bus and Premium Transit',
+																		'Walk to Transit - Local Bus Only',
+																		'Walk to Transit - Premium Transit Only')
+				THEN [transit_resident_trips].[weight_trip]
+						* [estimated_base_transit_skims].[estimated_walk_transit_time_total]
+				ELSE NULL
+				END) /
+				-- divided by the number of trips with alternate scenario skim values
+				-- or estimated alternate scenario skim values (build trips only)
+				SUM(CASE	WHEN ([transit_skims].[time_transit_out_vehicle] IS NOT NULL
+								  AND [transit_skims].[time_transit_in_vehicle] IS NOT NULL)
+								OR ([estimated_base_transit_skims].[estimated_drive_transit_time_total] IS NOT NULL
+									AND [estimated_base_transit_skims].[estimated_walk_transit_time_total] IS NOT NULL)
+							THEN [transit_resident_trips].[weight_trip]
+							ELSE 0 END) AS [avg_alternate_trip_time]
 		FROM
 			[transit_resident_trips]
 		LEFT OUTER JOIN
@@ -2697,63 +2744,445 @@ BEGIN
 		ON
 			[transit_resident_trips].[scenario_id] != [estimated_base_transit_skims].[scenario_id] -- match build trips with estimated base skims
 			AND [transit_resident_trips].[trip_origin_taz_13] = [estimated_base_transit_skims].[trip_origin_taz_13]
-			AND [transit_resident_trips].[trip_destination_taz_13] = [estimated_base_transit_skims].[trip_destination_taz_13])
+			AND [transit_resident_trips].[trip_destination_taz_13] = [estimated_base_transit_skims].[trip_destination_taz_13]
+		GROUP BY
+			[transit_resident_trips].[scenario_id]),
+	[results_table] AS (
+		SELECT
+			[transit_resident_trips].[scenario_id]
+			,[transit_resident_trips].[purpose_tour_description]
+			,[transit_resident_trips].[persons_coc]
+			,[transit_resident_trips].[persons_senior]
+			,[transit_resident_trips].[persons_minority]
+			,[transit_resident_trips].[persons_low_income]
+			-- the base/build scenario vot cost using their own skim values
+			-- weight out of vehicle transit time using input parameter
+			,SUM([transit_resident_trips].[weight_person_trip]
+				* (@ovt_weight * [transit_resident_trips].[time_transit_out_vehicle] + [transit_resident_trips].[time_transit_in_vehicle])
+				* CASE	WHEN [transit_resident_trips].[purpose_tour_description] = 'Work'
+						THEN @vot_commute / 60
+						WHEN [transit_resident_trips].[purpose_tour_description] != 'Work'
+						THEN @vot_non_commute / 60
+						ELSE NULL END) AS [cost_vot]
+			-- the base/build scenario vot cost using alternate scenario skim values
+			,SUM(CASE
+					-- the base/build scenario vot cost using alternate scenario skim values
+					-- only where there exists an alternate scenario skim value
+					-- weight out of vehicle transit time using input parameter
+					WHEN [transit_skims].[time_transit_out_vehicle] IS NOT NULL
+						AND [transit_skims].[time_transit_in_vehicle] IS NOT NULL
+					THEN [transit_resident_trips].[weight_person_trip]
+							* (@ovt_weight * [transit_skims].[time_transit_out_vehicle] + [transit_skims].[time_transit_in_vehicle])
+							* CASE	WHEN [transit_resident_trips].[purpose_tour_description] = 'Work'
+									THEN @vot_commute / 60
+									WHEN [transit_resident_trips].[purpose_tour_description] != 'Work'
+									THEN @vot_non_commute / 60
+									ELSE NULL END
+					-- the build scenario vot cost using estimated alternate scenario skim values
+					-- for the drive to transit modes
+					-- only where there exists an estimated alternate scenario skim value
+					-- cannot weight out of vehicle time as the estimate is for total time only
+					WHEN [transit_resident_trips].[scenario_id] = @scenario_id_build
+						AND ([transit_skims].[time_transit_out_vehicle] IS NULL OR [transit_skims].[time_transit_in_vehicle] IS NULL)
+						AND [estimated_base_transit_skims].[estimated_drive_transit_time_total] IS NOT NULL
+						AND [transit_resident_trips].[assignment_mode] IN ('Kiss and Ride to Transit - Local Bus and Premium Transit',
+																			'Kiss and Ride to Transit - Local Bus Only',
+																			'Kiss and Ride to Transit - Premium Transit Only',
+																			'Park and Ride to Transit - Local Bus and Premium Transit',
+																			'Park and Ride to Transit - Local Bus Only',
+																			'Park and Ride to Transit - Premium Transit Only')
+					THEN [transit_resident_trips].[weight_person_trip]
+							* [estimated_base_transit_skims].[estimated_drive_transit_time_total]
+							* CASE	WHEN [transit_resident_trips].[purpose_tour_description] = 'Work'
+									THEN @vot_commute / 60
+									WHEN [transit_resident_trips].[purpose_tour_description] != 'Work'
+									THEN @vot_non_commute / 60
+									ELSE NULL END
+					-- the build scenario vot cost using estimated alternate scenario skim values
+					-- for the walk to transit modes
+					-- only where there exists an estimated alternate scenario skim value
+					-- cannot weight out of vehicle time as the estimate is for total time only
+					WHEN [transit_resident_trips].[scenario_id] = @scenario_id_build
+						AND ([transit_skims].[time_transit_out_vehicle] IS NULL OR [transit_skims].[time_transit_in_vehicle] IS NULL)
+						AND [estimated_base_transit_skims].[estimated_walk_transit_time_total] IS NOT NULL
+						AND [transit_resident_trips].[assignment_mode] IN ('Walk to Transit - Local Bus and Premium Transit',
+																			'Walk to Transit - Local Bus Only',
+																			'Walk to Transit - Premium Transit Only')
+					THEN [transit_resident_trips].[weight_person_trip]
+							* [estimated_base_transit_skims].[estimated_walk_transit_time_total]
+							* CASE	WHEN [transit_resident_trips].[purpose_tour_description] = 'Work'
+									THEN @vot_commute / 60
+									WHEN [transit_resident_trips].[purpose_tour_description] != 'Work'
+									THEN @vot_non_commute / 60
+									ELSE NULL END
+					 -- if no matched skims or estimated base skims for build trips use the average alternate skim
+					ELSE [transit_resident_trips].[weight_person_trip] * [avg_alternate_trip_time].[avg_alternate_trip_time]
+						* CASE	WHEN [transit_resident_trips].[purpose_tour_description] = 'Work'
+									THEN @vot_commute / 60
+									WHEN [transit_resident_trips].[purpose_tour_description] != 'Work'
+									THEN @vot_non_commute / 60
+									ELSE NULL END
+					END) AS [alternate_cost_vot]
+				,SUM([transit_resident_trips].[weight_person_trip]) AS [person_trips]
+				,SUM([transit_resident_trips].[cost_transit]) AS [cost_transit]
+		FROM
+			[transit_resident_trips]
+		LEFT OUTER JOIN
+			[transit_skims]
+		ON
+			[transit_resident_trips].[scenario_id] != [transit_skims].[scenario_id] -- match base trips with build skims and vice versa
+			-- transit trips match at skims geographies, no need for aggregation
+			AND [transit_resident_trips].[geography_trip_origin_id] = [transit_skims].[geography_trip_origin_id]
+			AND [transit_resident_trips].[geography_trip_destination_id] = [transit_skims].[geography_trip_destination_id]
+			AND [transit_resident_trips].[assignment_mode] = [transit_skims].[assignment_mode]
+			AND [transit_resident_trips].[trip_start_abm_5_tod] = [transit_skims].[trip_start_abm_5_tod]
+		LEFT OUTER JOIN
+			[estimated_base_transit_skims]
+		ON
+			[transit_resident_trips].[scenario_id] != [estimated_base_transit_skims].[scenario_id] -- match build trips with estimated base skims
+			AND [transit_resident_trips].[trip_origin_taz_13] = [estimated_base_transit_skims].[trip_origin_taz_13]
+			AND [transit_resident_trips].[trip_destination_taz_13] = [estimated_base_transit_skims].[trip_destination_taz_13]
+		INNER JOIN
+			[avg_alternate_trip_time]
+		ON
+			[transit_resident_trips].[scenario_id] = [avg_alternate_trip_time].[scenario_id]
+		GROUP BY
+			[transit_resident_trips].[scenario_id]
+			,[transit_resident_trips].[purpose_tour_description]
+			,[transit_resident_trips].[persons_coc]
+			,[transit_resident_trips].[persons_senior]
+			,[transit_resident_trips].[persons_minority]
+			,[transit_resident_trips].[persons_low_income])
 	INSERT INTO @tbl_resident_trips_transit
 	SELECT
-		-- build trips vot under base skims
-		SUM(CASE	WHEN [scenario_id] = @scenario_id_build
-					THEN [alternate_cost_vot]
-					ELSE 0 END) AS [build_transit_trips_base_vot]
-		-- build trips vot under build skims
+		SUM([person_trips]) AS [person_trips]
+		,SUM(CASE	WHEN [scenario_id] = @scenario_id_base
+					THEN [person_trips]
+					ELSE 0 END) AS [base_person_trips]
 		,SUM(CASE	WHEN [scenario_id] = @scenario_id_build
+					THEN [person_trips]
+					ELSE 0 END) AS [build_person_trips]
+		,SUM(CASE	WHEN [persons_coc] = 1
+					THEN [person_trips]
+					ELSE 0 END) AS [coc_person_trips]
+		,SUM(CASE	WHEN [scenario_id] = @scenario_id_base
+						AND [persons_coc] = 1
+					THEN [person_trips]
+					ELSE 0 END) AS [base_coc_person_trips]
+		,SUM(CASE	WHEN [scenario_id] = @scenario_id_build
+						AND [persons_coc] = 1
+					THEN [person_trips]
+					ELSE 0 END) AS [build_coc_person_trips]
+		,-- 1/2 * all trips vot under base skims minus all trips vot under build skims
+		-- all trips under base skims
+		SUM(CASE	WHEN [scenario_id] = @scenario_id_base
 					THEN [cost_vot]
-					ELSE 0 END) AS [build_transit_trips_build_vot]
-		-- 1/2 * all trips vot under base skims minus all trips vot under build skims
-		,-- all trips under base skims
-			SUM(CASE	WHEN [scenario_id] = @scenario_id_base
-						THEN [cost_vot]
-						WHEN [scenario_id] = @scenario_id_build
-						THEN [alternate_cost_vot]
-						ELSE NULL END
-			-- all trips under build skims
-			- CASE	WHEN [scenario_id] = @scenario_id_base
+					WHEN [scenario_id] = @scenario_id_build
+					THEN [alternate_cost_vot]
+					ELSE NULL END
+		-- all trips under build skims
+		- CASE	WHEN [scenario_id] = @scenario_id_base
+				THEN [alternate_cost_vot]
+				WHEN [scenario_id] = @scenario_id_build
+				THEN [cost_vot]
+				ELSE NULL END)
+		-- multiplied by 1/2
+		* .5 AS [benefit_vot]
+		,-- 1/2 * all trips vot under base skims
+		-- all trips under base skims
+		SUM(CASE	WHEN [scenario_id] = @scenario_id_base
+					THEN [cost_vot]
+					WHEN [scenario_id] = @scenario_id_build
+					THEN [alternate_cost_vot]
+					ELSE NULL END)
+		-- multiplied by 1/2
+		* .5 AS [base_vot]
+		,-- 1/2 * all trips vot under build skims
+		-- all trips under base skims
+		SUM(CASE	WHEN [scenario_id] = @scenario_id_base
 					THEN [alternate_cost_vot]
 					WHEN [scenario_id] = @scenario_id_build
 					THEN [cost_vot]
 					ELSE NULL END)
-			-- multiplied by 1/2
-			* .5 AS [all_transit_trips_benefit_vot]
-	FROM (
-		-- calculate trip value of time costs for base trips using base travel times
-		-- calculate trip value of time costs for build trips using build travel times
-		-- calculate trip value of time costs for all trips using alternate scenario skim travel times
-			-- note there are base/build trips without alternate scenario skim travel times
-			-- these are base trips without matching build skim travel times
-			-- and build trips without matching base skim travel times or estimated base skim travel times
-				-- calculate the cost per base trip under build skims where
-					-- only base trips with alternate scenario travel times are included
-					-- then multiply this cost per trip by the total number of base trips
-					-- note this does not include any estimated build skims
-				-- calculate the cost per build trip under base skims where
-					-- only build trips with alternate scenario travel times are included
-					-- then multiply this cost per trip by the total number of build trips
-					-- note this does include estimated build skims when actual are unavailable
-		SELECT
-			[trips_matched_skims].[scenario_id]
-			-- trip value of time cost for trips with their own skims
-			,SUM([cost_vot]) AS [cost_vot]
+		-- multiplied by 1/2
+		* .5 AS [build_vot]
+		,-- 1/2 * work trips vot under base skims minus work trips vot under build skims
+		-- work trips under base skims
+		SUM(CASE	WHEN [scenario_id] = @scenario_id_base
+						AND [purpose_tour_description] = 'Work'
+					THEN [cost_vot]
+					WHEN [scenario_id] = @scenario_id_build
+						AND [purpose_tour_description] = 'Work'
+					THEN [alternate_cost_vot]
+					ELSE NULL END
+		-- work trips under build skims
+		- CASE	WHEN [scenario_id] = @scenario_id_base
+					AND [purpose_tour_description] = 'Work'
+				THEN [alternate_cost_vot]
+				WHEN [scenario_id] = @scenario_id_build
+					AND [purpose_tour_description] = 'Work'
+				THEN [cost_vot]
+				ELSE NULL END)
+		-- multiplied by 1/2
+		* .5 AS [work_benefit_vot]
+		,-- 1/2 * non work trips vot under base skims minus non work trips trips vot under build skims
+		-- non work trips under base skims
+		SUM(CASE	WHEN [scenario_id] = @scenario_id_base
+						AND [purpose_tour_description] != 'Work'
+					THEN [cost_vot]
+					WHEN [scenario_id] = @scenario_id_build
+						AND [purpose_tour_description] != 'Work'
+					THEN [alternate_cost_vot]
+					ELSE NULL END
+		-- non work trips under build skims
+		- CASE	WHEN [scenario_id] = @scenario_id_base
+					AND [purpose_tour_description] != 'Work'
+				THEN [alternate_cost_vot]
+				WHEN [scenario_id] = @scenario_id_build
+					AND [purpose_tour_description] != 'Work'
+				THEN [cost_vot]
+				ELSE NULL END)
+		-- multiplied by 1/2
+		* .5 AS [non_work_benefit_vot]
+		,-- 1/2 * work coc person trips vot under base skims minus work coc trips vot under build skims
+		-- work coc under base skims
+		SUM(CASE	WHEN [scenario_id] = @scenario_id_base
+						AND [purpose_tour_description] = 'Work'
+						AND [persons_coc] = 1
+					THEN [cost_vot]
+					WHEN [scenario_id] = @scenario_id_build
+						AND [purpose_tour_description] = 'Work'
+						AND [persons_coc] = 1
+					THEN [alternate_cost_vot]
+					ELSE NULL END
+		-- work coc trips under build skims
+		- CASE	WHEN [scenario_id] = @scenario_id_base
+					AND [purpose_tour_description] = 'Work'
+					AND [persons_coc] = 1
+				THEN [alternate_cost_vot]
+				WHEN [scenario_id] = @scenario_id_build
+					AND [purpose_tour_description] = 'Work'
+					AND [persons_coc] = 1
+				THEN [cost_vot]
+				ELSE NULL END)
+		-- multiplied by 1/2
+		* .5 AS [work_coc_benefit_vot]
+		,-- 1/2 * non work coc person trips vot under base skims minus non work coc trips vot under build skims
+		-- non work coc under base skims
+		SUM(CASE	WHEN [scenario_id] = @scenario_id_base
+						AND [purpose_tour_description] != 'Work'
+						AND [persons_coc] = 1
+					THEN [cost_vot]
+					WHEN [scenario_id] = @scenario_id_build
+						AND [purpose_tour_description] != 'Work'
+						AND [persons_coc] = 1
+					THEN [alternate_cost_vot]
+					ELSE NULL END
+		-- non work coc trips under build skims
+		- CASE	WHEN [scenario_id] = @scenario_id_base
+					AND [purpose_tour_description] != 'Work'
+					AND [persons_coc] = 1
+				THEN [alternate_cost_vot]
+				WHEN [scenario_id] = @scenario_id_build
+					AND [purpose_tour_description] != 'Work'
+					AND [persons_coc] = 1
+				THEN [cost_vot]
+				ELSE NULL END)
+		-- multiplied by 1/2
+		* .5 AS [non_work_coc_benefit_vot]
+		,-- 1/2 * work senior trips vot under base skims minus work senior trips vot under build skims
+		-- work senior trips under base skims
+		SUM(CASE	WHEN [scenario_id] = @scenario_id_base
+						AND [purpose_tour_description] = 'Work'
+						AND [persons_senior] = 1
+					THEN [cost_vot]
+					WHEN [scenario_id] = @scenario_id_build
+						AND [purpose_tour_description] = 'Work'
+						AND [persons_senior] = 1
+					THEN [alternate_cost_vot]
+					ELSE NULL END
+		-- work senior trips under build skims
+		- CASE	WHEN [scenario_id] = @scenario_id_base
+					AND [purpose_tour_description] = 'Work'
+					AND [persons_senior] = 1
+				THEN [alternate_cost_vot]
+				WHEN [scenario_id] = @scenario_id_build
+					AND [purpose_tour_description] = 'Work'
+					AND [persons_senior] = 1
+				THEN [cost_vot]
+				ELSE NULL END)
+		-- multiplied by 1/2
+		* .5 AS [work_senior_benefit_vot]
+		,-- 1/2 * non work senior trips vot under base skims minus non work senior trips vot under build skims
+		-- non work senior trips under base skims
+		SUM(CASE	WHEN [scenario_id] = @scenario_id_base
+						AND [purpose_tour_description] != 'Work'
+						AND [persons_senior] = 1
+					THEN [cost_vot]
+					WHEN [scenario_id] = @scenario_id_build
+						AND [purpose_tour_description] != 'Work'
+						AND [persons_senior] = 1
+					THEN [alternate_cost_vot]
+					ELSE NULL END
+		-- non work senior trips under build skims
+		- CASE	WHEN [scenario_id] = @scenario_id_base
+					AND [purpose_tour_description] != 'Work'
+					AND [persons_senior] = 1
+				THEN [alternate_cost_vot]
+				WHEN [scenario_id] = @scenario_id_build
+					AND [purpose_tour_description] != 'Work'
+					AND [persons_senior] = 1
+				THEN [cost_vot]
+				ELSE NULL END)
+		-- multiplied by 1/2
+		* .5 AS [non_work_senior_benefit_vot]
+		,-- 1/2 * work minority trips vot under base skims minus work minority trips vot under build skims
+		-- work minority trips under base skims
+		SUM(CASE	WHEN [scenario_id] = @scenario_id_base
+						AND [purpose_tour_description] = 'Work'
+						AND [persons_minority] = 1
+					THEN [cost_vot]
+					WHEN [scenario_id] = @scenario_id_build
+						AND [purpose_tour_description] = 'Work'
+						AND [persons_minority] = 1
+					THEN [alternate_cost_vot]
+					ELSE NULL END
+		-- work minority trips under build skims
+		- CASE	WHEN [scenario_id] = @scenario_id_base
+					AND [purpose_tour_description] = 'Work'
+					AND [persons_minority] = 1
+				THEN [alternate_cost_vot]
+				WHEN [scenario_id] = @scenario_id_build
+					AND [purpose_tour_description] = 'Work'
+					AND [persons_minority] = 1
+				THEN [cost_vot]
+				ELSE NULL END)
+		-- multiplied by 1/2
+		* .5 AS [work_minority_benefit_vot]
+		,-- 1/2 * non work minority trips vot under base skims minus non work minority trips vot under build skims
+		-- non work minority trips under base skims
+		SUM(CASE	WHEN [scenario_id] = @scenario_id_base
+						AND [purpose_tour_description] != 'Work'
+						AND [persons_minority] = 1
+					THEN [cost_vot]
+					WHEN [scenario_id] = @scenario_id_build
+						AND [purpose_tour_description] != 'Work'
+						AND [persons_minority] = 1
+					THEN [alternate_cost_vot]
+					ELSE NULL END
+		-- non work minority trips under build skims
+		- CASE	WHEN [scenario_id] = @scenario_id_base
+					AND [purpose_tour_description] != 'Work'
+					AND [persons_minority] = 1
+				THEN [alternate_cost_vot]
+				WHEN [scenario_id] = @scenario_id_build
+					AND [purpose_tour_description] != 'Work'
+					AND [persons_minority] = 1
+				THEN [cost_vot]
+				ELSE NULL END)
+		-- multiplied by 1/2
+		* .5 AS [non_work_minority_benefit_vot]
+		,-- 1/2 * work low income trips vot under base skims minus work low income trips vot under build skims
+		-- work low income trips under base skims
+		SUM(CASE	WHEN [scenario_id] = @scenario_id_base
+						AND [purpose_tour_description] = 'Work'
+						AND [persons_low_income] = 1
+					THEN [cost_vot]
+					WHEN [scenario_id] = @scenario_id_build
+						AND [purpose_tour_description] = 'Work'
+						AND [persons_low_income] = 1
+					THEN [alternate_cost_vot]
+					ELSE NULL END
+		-- work low income trips under build skims
+		- CASE	WHEN [scenario_id] = @scenario_id_base
+					AND [purpose_tour_description] = 'Work'
+					AND [persons_low_income] = 1
+				THEN [alternate_cost_vot]
+				WHEN [scenario_id] = @scenario_id_build
+					AND [purpose_tour_description] = 'Work'
+					AND [persons_low_income] = 1
+				THEN [cost_vot]
+				ELSE NULL END)
+		-- multiplied by 1/2
+		* .5 AS [work_low_income_benefit_vot]
+		,-- 1/2 * non work low income trips vot under base skims minus non work low income trips vot under build skims
+		-- non work low income trips under base skims
+		SUM(CASE	WHEN [scenario_id] = @scenario_id_base
+						AND [purpose_tour_description] != 'Work'
+						AND [persons_low_income] = 1
+					THEN [cost_vot]
+					WHEN [scenario_id] = @scenario_id_build
+						AND [purpose_tour_description] != 'Work'
+						AND [persons_low_income] = 1
+					THEN [alternate_cost_vot]
+					ELSE NULL END
+		-- non work low income trips under build skims
+		- CASE	WHEN [scenario_id] = @scenario_id_base
+					AND [purpose_tour_description] != 'Work'
+					AND [persons_low_income] = 1
+				THEN [alternate_cost_vot]
+				WHEN [scenario_id] = @scenario_id_build
+					AND [purpose_tour_description] != 'Work'
+					AND [persons_low_income] = 1
+				THEN [cost_vot]
+				ELSE NULL END)
+		-- multiplied by 1/2
+		* .5 AS [non_work_low_income_benefit_vot]
+		,-- toll cost for the base scenario
+		SUM(CASE	WHEN [scenario_id] = @scenario_id_base
+					THEN [cost_transit]
+					ELSE 0 END) AS [base_cost_transit]
+		,-- toll cost for the build scenario
+		SUM(CASE	WHEN [scenario_id] = @scenario_id_build
+					THEN [cost_transit]
+					ELSE 0 END) AS [build_cost_transit]
+		,-- work toll cost for the base scenario
+		SUM(CASE	WHEN [scenario_id] = @scenario_id_base
+						AND [purpose_tour_description] = 'Work'
+					THEN [cost_transit]
+					ELSE 0 END) AS [work_base_cost_transit]
+		,-- work toll cost for the build scenario
+		SUM(CASE	WHEN [scenario_id] = @scenario_id_build
+						AND [purpose_tour_description] = 'Work'
+					THEN [cost_transit]
+					ELSE 0 END) AS [work_build_cost_transit]
+		,-- non work toll cost for the base scenario
+		SUM(CASE	WHEN [scenario_id] = @scenario_id_base
+						AND [purpose_tour_description] != 'Work'
+					THEN [cost_transit]
+					ELSE 0 END) AS [non_work_base_cost_transit]
+		,-- non work toll cost for the build scenario
+		SUM(CASE	WHEN [scenario_id] = @scenario_id_build
+						AND [purpose_tour_description] != 'Work'
+					THEN [cost_transit]
+					ELSE 0 END) AS [non_work_build_cost_transit]
+		,-- work coc persons toll cost for the base scenario
+		SUM(CASE	WHEN [scenario_id] = @scenario_id_base
+						AND [purpose_tour_description] = 'Work'
+						AND [persons_coc] = 1
+					THEN [cost_transit]
+					ELSE 0 END) AS [work_coc_base_cost_transit]
+		,-- work coc persons toll cost for the build scenario
+		SUM(CASE	WHEN [scenario_id] = @scenario_id_build
+						AND [purpose_tour_description] = 'Work'
+						AND [persons_coc] = 1
+					THEN [cost_transit]
+					ELSE 0 END) AS [work_coc_build_cost_transit]
+		,-- non work coc persons toll cost for the base scenario
+		SUM(CASE	WHEN [scenario_id] = @scenario_id_base
+						AND [purpose_tour_description] != 'Work'
+						AND [persons_coc] = 1
+					THEN [cost_transit]
+					ELSE 0 END) AS [non_work_coc_base_cost_transit]
+		,-- non work coc persons toll cost for the build scenario
+		SUM(CASE	WHEN [scenario_id] = @scenario_id_build
+						AND [purpose_tour_description] != 'Work'
+						AND [persons_coc] = 1
+					THEN [cost_transit]
+					ELSE 0 END) AS [non_work_coc_build_cost_transit]
+	FROM
+		[results_table]
 
-			,	-- trip value of time cost for trips with alternative skims
-				SUM([alternate_cost_vot])
-				-- divided by number of trips
-				/ SUM(CASE	WHEN [alternate_cost_vot] IS NOT NULL
-							THEN [weight_trip] ELSE 0 END)
-				-- multiplied by the total number of trips
-				* SUM([weight_trip]) AS [alternate_cost_vot]
-		FROM
-			[trips_matched_skims]
-		GROUP BY
-			[scenario_id]) AS [results_table]
 	RETURN
 END
 GO
