@@ -30,21 +30,21 @@ AS
 BEGIN
 
 	with [toll_costs] AS (
-	SELECT
-		[scenario_id]
-		,[model_trip].[model_trip_description]
-		,SUM([toll_cost_drive]) AS [toll_cost_drive]
-	FROM
-		[fact].[person_trip]
-	INNER JOIN
-		[dimension].[model_trip]
-	ON
-		[person_trip].[model_trip_id] = [model_trip].[model_trip_id]
-	WHERE
-		[scenario_id] IN (@scenario_id_base, @scenario_id_build)
-	GROUP BY
-		[scenario_id]
-		,[model_trip].[model_trip_description])
+        SELECT
+            [person_trip].[scenario_id]
+            ,[model_trip].[model_trip_description]
+            ,SUM([person_trip].[toll_cost_drive] * [person_trip].[weight_trip]) AS [toll_cost_drive]
+        FROM
+            [fact].[person_trip]
+        INNER JOIN
+            [dimension].[model_trip]
+        ON
+            [person_trip].[model_trip_id] = [model_trip].[model_trip_id]
+        WHERE
+            [scenario_id] IN (@scenario_id_base, @scenario_id_build)
+        GROUP BY
+            [scenario_id]
+            ,[model_trip].[model_trip_description])
 	INSERT INTO @tbl_toll_cost
 	SELECT
 		SUM(CASE	WHEN [scenario_id] = @scenario_id_base
@@ -82,8 +82,8 @@ CREATE FUNCTION [bca].[fn_aggregate_trips]
 (
 	@scenario_id_base integer,
 	@scenario_id_build integer,
-	@vot_ctm float, -- value of time in $/hour for commercial travel model trips
-	@vot_truck float -- value of time in $/hour for truck model trips
+	@vot_ctm float, -- value of time ($/hr) for Commercial Travel model trips
+	@vot_truck float -- value of time ($/hr) for Truck model trips
 )
 RETURNS @tbl_aggregate_trips TABLE
 (
@@ -172,39 +172,35 @@ BEGIN
 			-- multiplied by 1/2
 			* .5 AS [all_trips_benefit_vot_truck]
 	FROM (
-		-- calculate trip value of time costs for base trips using base travel times
-		-- calculate trip value of time costs for build trips using build travel times
+		-- calculate trip value of time costs for base/build trips using base/build travel times
 		-- calculate trip value of time costs for all trips using base/build skim travel times
 			-- note there are base/build trips without alternate scenario skim travel times
-			-- calculate the cost per base trip under build skims where
-				-- only base trips with alternate scenario travel times are included
-				-- then multiply this cost per trip by the total number of base trips
-			-- calculate the cost per build trip under base skims where
-				-- only build trips with alternate scenario travel times are included
-				-- then multiply this cost per trip by the total number of build trips
+			-- calculate the cost per base/build trip under build/base skims where
+				-- only base/build trips with alternate scenario travel times are included
+				-- then multiply this cost per trip by the total number of base/build trips
 		SELECT
 			[trips_ctm_truck].[scenario_id]
 			,[trips_ctm_truck].[model_trip_description]
-			--trip value of time cost for trips with their own skims
-			,SUM([trips_ctm_truck].[weight_trip] * [trips_ctm_truck].[time_total] *
+			-- trip value of time cost for person trips with their own skims
+			,SUM([trips_ctm_truck].[weight_person_trip] * [trips_ctm_truck].[time_total] *
 					CASE	WHEN [trips_ctm_truck].[model_trip_description] = 'Commercial Vehicle'
 							THEN @vot_ctm / 60
 							WHEN [trips_ctm_truck].[model_trip_description] = 'Truck'
 							THEN @vot_truck / 60
 							ELSE NULL END) AS [cost_vot]
-			,-- trip value of time cost for trips with alternative skims
-				(SUM([trips_ctm_truck].[weight_trip] * ISNULL([auto_skims].[time_total], 0) *
+			,-- trip value of time cost for person trips with alternate skims
+				(SUM([trips_ctm_truck].[weight_person_trip] * ISNULL([auto_skims].[time_total], 0) *
 						CASE	WHEN [trips_ctm_truck].[model_trip_description] = 'Commercial Vehicle'
 								THEN @vot_ctm / 60
 								WHEN [trips_ctm_truck].[model_trip_description] = 'Truck'
 								THEN @vot_truck / 60
 								ELSE NULL END)
-				-- divided by number of trips
+				-- divided by number of person trips with alternate skims
 				/ SUM(CASE	WHEN [auto_skims].[time_total] IS NOT NULL
-							THEN [trips_ctm_truck].[weight_trip]
+							THEN [trips_ctm_truck].[weight_person_trip]
 							ELSE 0 END))
-				-- multiplied by the total number of trips
-				* SUM([trips_ctm_truck].[weight_trip]) AS [alternate_cost_vot]
+				-- multiplied by the total number of person trips
+				* SUM([trips_ctm_truck].[weight_person_trip]) AS [alternate_cost_vot]
 		FROM (
 			-- get base and build trip list for Commercial Vehicle and Truck models
 			-- to be matched with skims from base and build scenario
@@ -243,7 +239,7 @@ BEGIN
 				,[value_of_time_drive_bin_id]
 				,[time_trip_start].[trip_start_abm_5_tod]
 				,[person_trip].[time_total]
-				,[person_trip].[weight_trip]
+				,[person_trip].[weight_person_trip]
 			FROM
 				[fact].[person_trip]
 			INNER JOIN
@@ -304,7 +300,8 @@ BEGIN
 						END AS [assignment_mode] -- recode trip modes to assignment modes
 				,[value_of_time_drive_bin_id]
 				,[time_trip_start].[trip_start_abm_5_tod]
-				,SUM(([person_trip].[weight_person_trip] * [person_trip].[time_total])) / SUM([person_trip].[weight_person_trip]) AS [time_total]
+				-- use trip weights here instead of person trips weights as this is in line with assignment
+				,SUM(([person_trip].[weight_trip] * [person_trip].[time_total])) / SUM([person_trip].[weight_trip]) AS [time_total]
 			FROM
 				[fact].[person_trip]
 			INNER JOIN
@@ -376,7 +373,7 @@ BEGIN
 				,[value_of_time_drive_bin_id]
 				,[time_trip_start].[trip_start_abm_5_tod]
 			HAVING
-				SUM([person_trip].[weight_person_trip]) > 0
+				SUM([person_trip].[weight_trip]) > 0
 		) AS [auto_skims]
 		ON
 			[trips_ctm_truck].[scenario_id] != [auto_skims].[scenario_id] -- match base trips with build skims and vice versa
@@ -410,7 +407,7 @@ CREATE FUNCTION [bca].[fn_auto_ownership]
 (
 	@scenario_id_base integer,
 	@scenario_id_build integer,
-	@auto_ownership_cost float -- bca auto ownership cost parameter
+	@auto_ownership_cost float -- per vehicle cost ($/yr) associated with auto ownership
 )
 RETURNS @tbl_auto_ownership TABLE
 (
@@ -532,13 +529,13 @@ CREATE FUNCTION [bca].[fn_emissions]
 (
 	@scenario_id_base integer,
 	@scenario_id_build integer,
-	@cost_winter_CO float, -- cost of Winter Carbon Monoxide Tons Per Day Total
-	@cost_annual_PM2_5 float, -- cost of Annual Fine Particulate Matter (<2.5microns) Tons Per Day Total
-	@cost_summer_NOx float, -- cost of Summer Nitrogen Dioxide Tons Per Day Total
-	@cost_summer_ROG float,-- cost of Summer Reactive Organic Gases Tons Per Day Total
-	@cost_annual_SOx float,-- cost of Annual Sulfur Oxides Tons Per Day Total
-	@cost_annual_PM10 float, -- cost of Annual Fine Particulate Matter (<10 microns) Tons Per Day Total
-	@cost_annual_CO2 float -- cost of Annual Carbon Dioxide Tons Per Day Total
+	@cost_winter_CO float, -- $/ton of EMFAC Winter Carbon Monoxide Tons Per Day Total
+	@cost_annual_PM2_5 float, -- $/ton of EMFAC Annual Fine Particulate Matter (<2.5 microns) Tons Per Day Total
+	@cost_summer_NOx float, -- $/ton of EMFAC Summer Nitrogen Dioxide Tons Per Day Total
+	@cost_summer_ROG float,-- $/ton of EMFAC Summer Reactive Organic Gases Tons Per Day Total
+	@cost_annual_SOx float,-- $/ton of EMFAC Annual Sulfur Oxides Tons Per Day Total
+	@cost_annual_PM10 float, -- $/ton of EMFAC Annual Fine Particulate Matter (<10 microns) Tons Per Day Total
+	@cost_annual_CO2 float -- $/ton of EMFAC Annual Carbon Dioxide Tons Per Day Total
 )
 RETURNS @tbl_emissions TABLE
 (
@@ -777,21 +774,21 @@ CREATE FUNCTION [bca].[fn_highway_link]
 (
 	@scenario_id_base integer,
 	@scenario_id_build integer,
-	@reliability_ratio float, -- TODO requires comment
-	@crash_cost_pdo float, -- TODO requires comment
-	@crash_cost_injury float, -- TODO requires comment
-	@crash_cost_fatal float, -- TODO requires comment
-	@crash_rate_pdo float, -- TODO requires comment
-	@crash_rate_injury float, -- TODO requires comment
-	@crash_rate_fatal float, -- TODO requires comment
-	@voc_auto float, -- TODO requires comment
-	@voc_lhdt float, -- TODO requires comment
-	@voc_mhdt float, -- TODO requires comment
-	@voc_hhdt float, -- TODO requires comment
-	@vor_auto float, -- TODO requires comment
-	@vor_lhdt float, -- TODO requires comment
-	@vor_mhdt float, -- TODO requires comment
-	@vor_hhdt float -- TODO requires comment
+	@reliability_ratio float, -- reliability ratio (value of reliability ($/hr) / value of time ($/hr))
+	@crash_cost_pdo float, -- property damage only crash cost ($/cash)
+	@crash_cost_injury float, -- injury crash cost ($/crash)
+	@crash_cost_fatal float, -- fatal crash cost ($/crash)
+	@crash_rate_pdo float, -- property damage only crash rate (crashes/1,000,000 vmt)
+	@crash_rate_injury float, -- injury crash rate (crashes/1,000,000 vmt)
+	@crash_rate_fatal float, -- fatal crash rate (crashes/1,000,000 vmt)
+	@voc_auto float, -- auto vehicle operating cost ($/mile)
+	@voc_lhdt float, -- light heavy-duty truck vehicle operating cost ($/mile)
+	@voc_mhdt float, -- medium heavy-duty truck vehicle operating cost ($/mile)
+	@voc_hhdt float, -- heavy heavy-duty truck vehicle operating cost ($/mile)
+	@vor_auto float, -- auto trip value of reliability ($/hr)
+	@vor_lhdt float, -- light heavy-duty truck trip value of reliability ($/hr)
+	@vor_mhdt float, -- medium heavy-duty truck trip value of reliability ($/hr)
+	@vor_hhdt float -- heavy heavy-duty truck trip value of reliability ($/hr)
 )
 RETURNS @tbl_highway_link TABLE
 (
@@ -816,8 +813,8 @@ AS
 -- Create date: 7/09/2018
 -- Description:	Translation and combination of the bca tool stored procedures
 -- for the new abm database listed below. Given two input scenario_id values,
--- returns table of (TODO of what?) segmented by base and build
--- scenarios loaded highway network.
+-- returns and compares operating costs, reliability costs, and crash costs
+-- derived from the loaded highway network.
 --	[dbo].[run_link_comparison]
 --	[dbo].[run_link_processor]
 --	[dbo].[run_link_summary]
@@ -826,14 +823,14 @@ BEGIN
 
 	-- get link volumes by ab and tod for autos and trucks (lht, mht, hht)
 	-- calculate link free flow speed by ab and tod
-	-- begin caluclation of link vehicle delay per mile by ab and tod
+	-- begin calculation of link vehicle delay per mile by ab and tod
 	with [flow_ab_tod] AS (
 		SELECT
 			[hwy_flow].[scenario_id]
 			,CASE	WHEN 1.0274 * POWER([hwy_flow].[time] / ([hwy_link_ab_tod].[tm]), 1.2204) > 3.0
 					THEN 3.0
 					ELSE 1.0274 * POWER([hwy_flow].[time] / ([hwy_link_ab_tod].[tm]), 1.2204)
-					END AS [ttim2] -- begin caluclation of link vehicle delay per mile by ab and tod
+					END AS [ttim2] -- begin calculation of link vehicle delay per mile by ab and tod
 			,[hwy_link].[length_mile] / ([hwy_link_ab_tod].[tm] / 60) AS [speed_free_flow]
 			,[hwy_flow].[flow] * [hwy_link].[length_mile] AS [vmt_total]
 			,[hwy_flow_mode_agg].[flow_auto] * [hwy_link].[length_mile] AS [vmt_auto]
@@ -993,8 +990,8 @@ CREATE FUNCTION [bca].[fn_physical_activity]
 (
 	@scenario_id_base integer,
 	@scenario_id_build integer,
-	@activity_threshold float, -- bca minimum minutes to define person as physically active parameter
-	@activity_benefit float -- bca physically active person benefit parameter
+	@activity_threshold float, -- minimum amount of minutes of physically active travel time at which a person is defined as physically active
+	@activity_benefit float -- $/person benefit of being physically active
 )
 RETURNS @tbl_physical_activity TABLE
 (
@@ -1023,7 +1020,7 @@ AS
 -- total physically active persons for the base and build scenarios by
 -- Community of Concern and each element that indicates a Community of Concern
 -- person (seniors, minorities, low income). Differences and benefits between
--- two base and build scenarios are calculated as well.
+-- two base and build scenarios are calculated.
 --	[dbo].[run_physical_activity_comparison]
 --	[dbo].[run_physical_activity_processor]
 --	[dbo].[run_physical_activity_summary]
@@ -1129,9 +1126,8 @@ CREATE FUNCTION [bca].[fn_resident_trips_at]
 (
 	@scenario_id_base integer,
 	@scenario_id_build integer,
-	@vot_commute float, -- value of time in $/hour for Work tour purpose trips
-	@vot_non_commute float -- value of time in $/hour for Non-Work tour purpose trips
-	-- TODO include @ovt_weight in vot calculations? Not done previously.
+	@vot_commute float, -- value of time ($/hr) of work tour purpose trips
+	@vot_non_commute float -- value of time ($/hr) of non-work tour purpose trips
 )
 RETURNS @tbl_resident_trips_at TABLE
 (
@@ -1187,7 +1183,8 @@ BEGIN
             -- all trip modes are directly mapped to assignment modes for
             -- active transportation assignment modes
             ,[mode_trip].[mode_trip_description] AS [assignment_mode]
-            ,SUM(([person_trip].[weight_person_trip] * [person_trip].[time_total])) / SUM([person_trip].[weight_person_trip]) AS [time_total]
+            -- use trip weights here instead of person trips weights as this is in line with assignment
+            ,SUM(([person_trip].[weight_trip] * [person_trip].[time_total])) / SUM([person_trip].[weight_trip]) AS [time_total]
         FROM
             [fact].[person_trip]
         INNER JOIN
@@ -1204,7 +1201,7 @@ BEGIN
             ,[person_trip].[geography_trip_destination_id]
             ,[mode_trip].[mode_trip_description]
         HAVING
-            SUM([person_trip].[weight_person_trip]) > 0
+            SUM([person_trip].[weight_trip]) > 0
     ),
     [at_resident_trips] AS (
         -- get trip list for base and build scenario of all resident trips
@@ -1659,8 +1656,8 @@ CREATE FUNCTION [bca].[fn_resident_trips_auto]
 (
 	@scenario_id_base integer,
 	@scenario_id_build integer,
-	@vot_commute float, -- value of time in $/hour for Work tour purpose trips
-	@vot_non_commute float -- value of time in $/hour for Non-Work tour purpose trips
+	@vot_commute float, -- value of time ($/hr) of work tour purpose trips
+	@vot_non_commute float -- value of time ($/hr) of non-work tour purpose trips
 )
 RETURNS @tbl_resident_trips_auto TABLE
 (
@@ -1745,7 +1742,8 @@ BEGIN
 					END AS [assignment_mode] -- recode trip modes to assignment modes
 			,[value_of_time_drive_bin_id]
 			,[time_trip_start].[trip_start_abm_5_tod]
-			,SUM(([person_trip].[weight_person_trip] * [person_trip].[time_total])) / SUM([person_trip].[weight_person_trip]) AS [time_total]
+			-- use trip weights here instead of person trips weights as this is in line with assignment
+			,SUM(([person_trip].[weight_trip] * [person_trip].[time_total])) / SUM([person_trip].[weight_trip]) AS [time_total]
 		FROM
 			[fact].[person_trip]
 		INNER JOIN
@@ -1817,7 +1815,7 @@ BEGIN
 			,[value_of_time_drive_bin_id]
 			,[time_trip_start].[trip_start_abm_5_tod]
 		HAVING
-			SUM([person_trip].[weight_person_trip]) > 0
+			SUM([person_trip].[weight_trip]) > 0
 	),
 	[auto_resident_trips] AS (
 		-- get trip list for base and build scenario of all resident trips
@@ -1994,7 +1992,7 @@ BEGIN
 			,[auto_resident_trips].[persons_minority]
 			,[auto_resident_trips].[persons_low_income]
 			 -- split toll cost within scenarios amongst all trip participants
-			,SUM([auto_resident_trips].[toll_cost_drive] / [auto_resident_trips].[weight_trip]) AS [cost_toll]
+			,SUM(([auto_resident_trips].[weight_trip] * [auto_resident_trips].[toll_cost_drive]) / [auto_resident_trips].[weight_person_trip]) AS [cost_toll]
 			-- trip value of time cost for person trips with their own skims
 			,SUM([auto_resident_trips].[weight_person_trip] * [auto_resident_trips].[time_total] *
 					CASE	WHEN [auto_resident_trips].[purpose_tour_description] = 'Work'
@@ -2570,15 +2568,18 @@ BEGIN
 			,[mode_trip].[mode_trip_description] AS [assignment_mode]
 			,[time_trip_start].[trip_start_abm_5_tod]
 			-- include transit in vehicle time
-			,SUM(([person_trip].[weight_person_trip] * [person_trip].[time_transit_in_vehicle]))
-				/ SUM([person_trip].[weight_person_trip]) AS [time_transit_in_vehicle]
+			-- use trip weights here instead of person trips weights as this is in line with assignment
+			,SUM(([person_trip].[weight_trip] * [person_trip].[time_transit_in_vehicle]))
+				/ SUM([person_trip].[weight_trip]) AS [time_transit_in_vehicle]
 			-- include transit out vehicle time
-			,SUM(([person_trip].[weight_person_trip]
+			-- use trip weights here instead of person trips weights as this is in line with assignment
+			,SUM(([person_trip].[weight_trip]
 					* ([person_trip].[time_total] - ([person_trip].[time_transit_in_vehicle] + [person_trip].[time_drive]))))
-				/ SUM([person_trip].[weight_person_trip])
+				/ SUM([person_trip].[weight_trip])
 				AS [time_transit_out_vehicle]
-			,SUM(([person_trip].[weight_person_trip] * [person_trip].[time_total]))
-				/ SUM([person_trip].[weight_person_trip]) AS [time_total]
+			-- use trip weights here instead of person trips weights as this is in line with assignment
+			,SUM(([person_trip].[weight_trip] * [person_trip].[time_total]))
+				/ SUM([person_trip].[weight_trip]) AS [time_total]
 		FROM
 			[fact].[person_trip]
 		INNER JOIN
@@ -2608,7 +2609,7 @@ BEGIN
 			,[mode_trip].[mode_trip_description]
 			,[time_trip_start].[trip_start_abm_5_tod]
 		HAVING
-			SUM([person_trip].[weight_person_trip]) > 0
+			SUM([person_trip].[weight_trip]) > 0
 	),
 	[estimated_base_transit_skims] AS (
 		-- create base scenario estimated transit skims from person trips table
@@ -2621,15 +2622,19 @@ BEGIN
 			[person_trip].[scenario_id]
 			,[geography_trip_origin].[trip_origin_taz_13]
 			,[geography_trip_destination].[trip_destination_taz_13]
+			-- use trip weights here instead of person trips weights as this is in line with assignment
 			-- walk to transit estimated total time requires both distance and time for calculation
-			-- average travel time weighted by person trips
-			,SUM(([person_trip].[weight_person_trip] * [person_trip].[time_total])) / SUM([person_trip].[weight_person_trip])
-			-- multiplied by 19.7 * average travel distance weighted by person trips raised to the power of -.362
-				* (19.7 * POWER(SUM(([person_trip].[weight_person_trip] * [person_trip].[time_total])) / SUM([person_trip].[weight_person_trip]), -.362))
+			-- average travel time weighted by trips
+			,SUM(([person_trip].[weight_trip] * [person_trip].[time_total])) / SUM([person_trip].[weight_trip])
+			-- multiplied by 19.7 * average travel distance weighted by trips raised to the power of -.362
+				* (19.7 * POWER(SUM(([person_trip].[weight_trip] * [person_trip].[time_total])) / SUM([person_trip].[weight_trip]), -.362))
 				AS [estimated_walk_transit_time_total]
-			,SUM(([person_trip].[weight_person_trip] * [person_trip].[time_total])) / SUM([person_trip].[weight_person_trip])
-			-- multiplied by 19.7 * average travel distance weighted by person trips raised to the power of -.362
-				* (12.653 * POWER(SUM(([person_trip].[weight_person_trip] * [person_trip].[time_total])) / SUM([person_trip].[weight_person_trip]), -.358))
+			-- use trip weights here instead of person trips weights as this is in line with assignment
+			-- drive to transit estimated total time requires just time for calculation
+			-- average travel time weighted by trips
+			,SUM(([person_trip].[weight_trip] * [person_trip].[time_total])) / SUM([person_trip].[weight_trip])
+			-- multiplied by 12.653 * average travel distance weighted by person trips raised to the power of -.362
+				* (12.653 * POWER(SUM(([person_trip].[weight_trip] * [person_trip].[time_total])) / SUM([person_trip].[weight_trip]), -.358))
 				AS [estimated_drive_transit_time_total]
 		FROM
 			[fact].[person_trip]
@@ -2675,8 +2680,8 @@ BEGIN
 			,[geography_trip_origin].[trip_origin_taz_13]
 			,[geography_trip_destination].[trip_destination_taz_13]
 		HAVING
-			SUM([person_trip].[weight_person_trip]) > 0
-			AND SUM(([person_trip].[weight_person_trip] * [person_trip].[time_total])) > 0
+			SUM([person_trip].[weight_trip]) > 0
+			AND SUM(([person_trip].[weight_trip] * [person_trip].[time_total])) > 0
 	),
 	[avg_alternate_trip_time] AS (
 		SELECT
@@ -2824,7 +2829,8 @@ BEGIN
 									ELSE NULL END
 					END) AS [alternate_cost_vot]
 				,SUM([transit_resident_trips].[weight_person_trip]) AS [person_trips]
-				,SUM([transit_resident_trips].[cost_transit]) AS [cost_transit]
+				-- transit costs are shared by all participants
+				,SUM([transit_resident_trips].[weight_person_trip] * [transit_resident_trips].[cost_transit]) AS [cost_transit]
 		FROM
 			[transit_resident_trips]
 		LEFT OUTER JOIN
