@@ -3370,3 +3370,288 @@ GO
 EXECUTE [db_meta].[add_xp] 'bca.sp_load_emfac_output', 'SUBSYSTEM', 'bca'
 EXECUTE [db_meta].[add_xp] 'bca.sp_load_emfac_output', 'MS_Description', 'stored procedure to load emfac emissions program output xlsx files'
 GO
+
+
+
+
+-- Create stored procedure for resident telecommuters
+IF  EXISTS (SELECT * FROM sys.objects WHERE [object_id] = OBJECT_ID(N'[bca].[sp_resident_telecommute_benefits]') AND [type] = 'P')
+DROP PROCEDURE [bca].[sp_resident_telecommute_benefits]
+GO
+
+CREATE PROCEDURE [bca].[sp_resident_telecommute_benefits]
+	@scenario_id_base integer,
+	@scenario_id_build integer,
+	@vot_commute float -- value of time ($/hr) of work purpose trips
+AS
+-- ===========================================================================
+-- Author:		Gregor Schroeder
+-- Create date: 9/25/2018
+-- Description:	Given two input scenario_id values and an input value of time
+-- for Work purpose trips, returns value of time benefit of non-taken work
+-- work tours for telecommuters. Non-taken work tour travel times for
+-- telecommuters are assumed to be two times the average of all direct to work
+-- trips (Home-Work, Work-Home) originating from the telecommuters home TAZ.
+-- A benefits calculation of
+-- 1/2 * (all trips under build scenario travel times - all trips under base scenario travel times)
+-- is used for consistency with other BCA components.
+-- Note that home TAZs without scenario travel times or alternate scenario
+-- travel times are assigned the average scenario/alternate scenario travel
+-- time of all home TAZs for the scenario.
+-- ===========================================================================
+-- #taz_work_trip_time
+-- create base and build scenario average direct to work tour travel time
+-- use only home-work and work-home trips for each home TAZ
+-- this is the average one-way direct commute travel time for each home TAZ
+-- multiplied by two
+SELECT
+	[person_trip].[scenario_id]
+	,CASE	WHEN [purpose_trip_origin].[purpose_trip_origin_description] = 'Home'
+			THEN [geography_trip_origin].[trip_origin_taz_13]
+			WHEN [purpose_trip_destination].[purpose_trip_destination_description] = 'Home'
+			THEN [geography_trip_destination].[trip_destination_taz_13]
+			ELSE NULL END AS [taz_home] -- set home TAZ depending on direction of home-work trip
+	-- use trip weights here instead of person trips weights as this is in line with assignment
+	,2 * SUM(([person_trip].[weight_trip] * [person_trip].[time_total])) / SUM([person_trip].[weight_trip]) AS [time_total]
+INTO
+	#taz_work_tour_time
+FROM
+	[fact].[person_trip]
+INNER JOIN
+	[dimension].[purpose_trip_origin]
+ON
+	[person_trip].[purpose_trip_origin_id] = [purpose_trip_origin].[purpose_trip_origin_id]
+INNER JOIN
+	[dimension].[purpose_trip_destination]
+ON
+	[person_trip].[purpose_trip_destination_id] = [purpose_trip_destination].[purpose_trip_destination_id]
+INNER JOIN
+	[dimension].[geography_trip_origin]
+ON
+	[person_trip].[geography_trip_origin_id] = [geography_trip_origin].[geography_trip_origin_id]
+INNER JOIN
+	[dimension].[geography_trip_destination]
+ON
+	[person_trip].[geography_trip_destination_id] = [geography_trip_destination].[geography_trip_destination_id]
+WHERE
+	[person_trip].[scenario_id] IN (@scenario_id_base, @scenario_id_build)
+	AND ( -- direct home-work trips
+			([purpose_trip_origin].[purpose_trip_origin_description] = 'Home'
+				AND [purpose_trip_destination].[purpose_trip_destination_description] = 'Work') OR
+			-- direct work-home trips
+			([purpose_trip_origin].[purpose_trip_origin_description] = 'Work'
+				AND [purpose_trip_destination].[purpose_trip_destination_description] = 'Home')
+		)
+GROUP BY
+	[person_trip].[scenario_id]
+	,CASE	WHEN [purpose_trip_origin].[purpose_trip_origin_description] = 'Home'
+			THEN [geography_trip_origin].[trip_origin_taz_13]
+			WHEN [purpose_trip_destination].[purpose_trip_destination_description] = 'Home'
+			THEN [geography_trip_destination].[trip_destination_taz_13]
+			ELSE NULL END
+HAVING
+	SUM([person_trip].[weight_trip]) > 0
+
+
+-- #results_table
+-- get the number of telecommuters by household TAZ
+-- segmented by scenario and Community of Concern categories
+-- and append the average direct to work tour travel time for each home TAZ
+-- using the scenario's own skims and the alternate scenario's skims from #taz_work_tour_time
+-- note some household TAZs may not have values in #taz_work_tour_time for these skims
+-- they are populated later
+SELECT
+	[telecommute_persons].[scenario_id]
+	,[telecommute_persons].[persons_coc]
+	,[telecommute_persons].[persons_senior]
+	,[telecommute_persons].[persons_minority]
+	,[telecommute_persons].[persons_low_income]
+	,[telecommute_persons].[persons]
+	,[#taz_work_tour_time].[time_total]
+	,[alternate_taz_work_trip_time].[time_total] AS [alternate_time_total]
+INTO #results_table
+FROM (
+	-- get the number of telecommuters by household TAZ
+	-- segmented by scenario and Community of Concern categories
+	SELECT
+		[person].[scenario_id]
+		,[geography_household_location].[household_location_taz_13]
+		,SUM(CASE	WHEN [person].[age] >= 75 THEN [person].[weight_person]
+					WHEN [person].[race] IN ('Some Other Race Alone',
+												'Asian Alone',
+												'Black or African American Alone',
+												'Two or More Major Race Groups',
+												'Native Hawaiian and Other Pacific Islander Alone',
+												'American Indian and Alaska Native Tribes specified; or American Indian or Alaska Native, not specified and no other races')
+							OR [person].[hispanic] = 'Hispanic' THEN [person].[weight_person]
+					WHEN [household].[poverty] <= 2 THEN [person].[weight_person] ELSE 0 END) AS [persons_coc]
+		,SUM(CASE WHEN [person].[age] >= 75 THEN [person].[weight_person] ELSE 0 END) AS [persons_senior]
+		,SUM(CASE	WHEN [person].[race] IN ('Some Other Race Alone',
+												'Asian Alone',
+												'Black or African American Alone',
+												'Two or More Major Race Groups',
+												'Native Hawaiian and Other Pacific Islander Alone',
+												'American Indian and Alaska Native Tribes specified; or American Indian or Alaska Native, not specified and no other races')
+						OR [person].[hispanic] = 'Hispanic' THEN [person].[weight_person]
+					ELSE 0 END) AS [persons_minority]
+		,SUM(CASE WHEN [household].[poverty] <= 2 THEN [person].[weight_person] ELSE 0 END) AS [persons_low_income]
+		,SUM([weight_person]) AS [persons]
+	FROM
+		[dimension].[person]
+	INNER JOIN
+		[dimension].[household]
+	ON
+		[person].[scenario_id] = [household].[scenario_id]
+		AND [person].[household_id] = [household].[household_id]
+	INNER JOIN
+		[dimension].[geography_household_location]
+	ON
+		[household].[geography_household_location_id] = [geography_household_location].[geography_household_location_id]
+	WHERE
+		[person].[scenario_id] IN (@scenario_id_base, @scenario_id_build)
+		AND [household].[scenario_id] IN (@scenario_id_base, @scenario_id_build)
+		AND [person].[work_segment] = 'Work from Home'
+		AND [person].[weight_person] > 0
+	GROUP BY
+		[person].[scenario_id]
+		,[geography_household_location].[household_location_taz_13]) AS [telecommute_persons]
+LEFT OUTER JOIN -- keep home locations without direct to work tour travel times
+	[#taz_work_tour_time]
+ON
+	[telecommute_persons].[scenario_id] = [#taz_work_tour_time].[scenario_id]
+	AND [telecommute_persons].[household_location_taz_13] = [#taz_work_tour_time].[taz_home]
+LEFT OUTER JOIN -- keep home locations without alternate scenario direct to work tour travel times
+	[#taz_work_tour_time] AS [alternate_taz_work_trip_time]
+ON
+	[telecommute_persons].[scenario_id] != [alternate_taz_work_trip_time].[scenario_id] -- match base/build to build/base
+	AND [telecommute_persons].[household_location_taz_13] = [alternate_taz_work_trip_time].[taz_home]
+
+
+-- return the not-taken direct commute work tour benefits
+SELECT
+	-- 1/2 * all not-taken tours vot under build skims minus all not-taken tours vot under base skims
+    -- all not-taken tours vot under build skims
+	SUM(CASE	WHEN [scenario_id] = @scenario_id_base
+				THEN [persons] * [alternate_benefit_vot]
+				WHEN [scenario_id] = @scenario_id_build
+				THEN [persons] * [benefit_vot]
+				ELSE NULL END
+	-- minus all not-taken tours vot under base skims
+	- CASE	WHEN [scenario_id] = @scenario_id_base
+			THEN [persons] * [benefit_vot]
+			WHEN [scenario_id] = @scenario_id_build
+			THEN [persons] * [alternate_benefit_vot]
+				ELSE NULL END)
+	-- multiplied by 1/2
+	* .5 AS [benefit_vot]
+	,-- 1/2 * all not-taken tours vot under base skims
+    -- not-taken tours vot under base skims
+    SUM(CASE	WHEN [scenario_id] = @scenario_id_base
+                THEN [persons] * [benefit_vot]
+                WHEN [scenario_id] = @scenario_id_build
+                THEN [persons] * [alternate_benefit_vot]
+                ELSE NULL END)
+    -- multiplied by 1/2
+    * .5 AS [base_vot]
+	,-- 1/2 * all not-taken tours vot under build skims
+    -- all not-taken tours under base skims
+    SUM(CASE	WHEN [scenario_id] = @scenario_id_base
+				THEN [persons] * [alternate_benefit_vot]
+				WHEN [scenario_id] = @scenario_id_build
+				THEN [persons] * [benefit_vot]
+				ELSE NULL END)
+    -- multiplied by 1/2
+    * .5 AS [build_vot]
+	-- 1/2 * all coc not-taken tours vot under build skims minus all coc not-taken tours vot under base skims
+    -- all coc not-taken tours vot under build skims
+	,SUM(CASE	WHEN [scenario_id] = @scenario_id_base
+				THEN [persons_coc] * [alternate_benefit_vot]
+				WHEN [scenario_id] = @scenario_id_build
+				THEN [persons_coc] * [benefit_vot]
+				ELSE NULL END
+	-- minus all coc not-taken tours vot under base skims
+	- CASE	WHEN [scenario_id] = @scenario_id_base
+			THEN [persons_coc] * [benefit_vot]
+			WHEN [scenario_id] = @scenario_id_build
+			THEN [persons_coc] * [alternate_benefit_vot]
+				ELSE NULL END)
+	-- multiplied by 1/2
+	* .5 AS [coc_benefit_vot]
+	-- 1/2 * all senior not-taken tours vot under build skims minus all senior not-taken tours vot under base skims
+    -- all senior not-taken tours vot under build skims
+	,SUM(CASE	WHEN [scenario_id] = @scenario_id_base
+				THEN [persons_senior] * [alternate_benefit_vot]
+				WHEN [scenario_id] = @scenario_id_build
+				THEN [persons_senior] * [benefit_vot]
+				ELSE NULL END
+	-- minus all senior not-taken tours vot under base skims
+	- CASE	WHEN [scenario_id] = @scenario_id_base
+			THEN [persons_senior] * [benefit_vot]
+			WHEN [scenario_id] = @scenario_id_build
+			THEN [persons_senior] * [alternate_benefit_vot]
+				ELSE NULL END)
+	-- multiplied by 1/2
+	* .5 AS [senior_benefit_vot]
+	-- 1/2 * all minority not-taken tours vot under build skims minus all minority not-taken tours vot under base skims
+    -- all minority not-taken tours vot under build skims
+	,SUM(CASE	WHEN [scenario_id] = @scenario_id_base
+				THEN [persons_minority] * [alternate_benefit_vot]
+				WHEN [scenario_id] = @scenario_id_build
+				THEN [persons_minority] * [benefit_vot]
+				ELSE NULL END
+	-- minus all minority not-taken tours vot under base skims
+	- CASE	WHEN [scenario_id] = @scenario_id_base
+			THEN [persons_minority] * [benefit_vot]
+			WHEN [scenario_id] = @scenario_id_build
+			THEN [persons_minority] * [alternate_benefit_vot]
+				ELSE NULL END)
+	-- multiplied by 1/2
+	* .5 AS [minority_benefit_vot]
+	-- 1/2 * all low_income not-taken tours vot under build skims minus all low_income not-taken tours vot under base skims
+    -- all low_income not-taken tours vot under build skims
+	,SUM(CASE	WHEN [scenario_id] = @scenario_id_base
+				THEN [persons_low_income] * [alternate_benefit_vot]
+				WHEN [scenario_id] = @scenario_id_build
+				THEN [persons_low_income] * [benefit_vot]
+				ELSE NULL END
+	-- minus all low_income not-taken tours vot under base skims
+	- CASE	WHEN [scenario_id] = @scenario_id_base
+			THEN [persons_low_income] * [benefit_vot]
+			WHEN [scenario_id] = @scenario_id_build
+			THEN [persons_low_income] * [alternate_benefit_vot]
+				ELSE NULL END)
+	-- multiplied by 1/2
+	* .5 AS [low_income_benefit_vot]
+FROM (
+	SELECT
+		[#results_table].[scenario_id]
+		,[#results_table].[persons_coc]
+		,[#results_table].[persons_senior]
+		,[#results_table].[persons_minority]
+		,[#results_table].[persons_low_income]
+		,[#results_table].[persons]
+		-- telecommute non-taken direct to work tour value of time benefit using scenario's own skims
+		-- if no skim use the average
+		,ISNULL([#results_table].[time_total], [avg_trip_time].[time_total_avg]) * @vot_commute / 60 AS [benefit_vot]
+		-- telecommute non-taken direct to work tour value of time benefit using alternate scenario's skims
+		-- if no alternate scenario skim use the average alternate scenario skim
+		,ISNULL([#results_table].[alternate_time_total], [avg_trip_time].[alternate_time_total_avg]) * @vot_commute / 60 AS [alternate_benefit_vot]
+	FROM
+		[#results_table]
+	INNER JOIN ( -- get the average one-way direct commute travel time for each scenario under their own and alternate scenario skims
+		SELECT
+			[scenario_id]
+			,SUM([persons] * [time_total]) / SUM([persons]) AS [time_total_avg]
+			,SUM([persons] * [alternate_time_total]) / SUM([persons]) AS [alternate_time_total_avg]
+		FROM
+			#results_table
+		GROUP BY
+			[scenario_id]) AS [avg_trip_time]
+	ON
+		[#results_table].[scenario_id] = [avg_trip_time].[scenario_id]) AS [tt]
+GO
+
+-- Add metadata for [bca].[sp_resident_telecommute_benefits]
+EXECUTE [db_meta].[add_xp] 'bca.sp_resident_telecommute_benefits', 'SUBSYSTEM', 'bca'
+EXECUTE [db_meta].[add_xp] 'bca.sp_resident_telecommute_benefits', 'MS_Description', 'stored procedure to return non-taken telecommuter work tour benefits under alternative skims'
+GO
