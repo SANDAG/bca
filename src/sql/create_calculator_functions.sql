@@ -990,121 +990,150 @@ CREATE FUNCTION [bca].[fn_physical_activity]
 (
 	@scenario_id_base integer,
 	@scenario_id_build integer,
-	@activity_threshold float, -- minimum amount of minutes of physically active travel time at which a person is defined as physically active
-	@activity_benefit float -- $/person benefit of being physically active
+	@bike_vot_recreational float, -- value of time benefit ($/hr) of recreational bicycling
+	@bike_vot_non_recreational float, -- value of time benefit ($/hr) of non-recreational bicycling
+	@walk_vot_recreational float, -- value of time benefit ($/hr) of recreational walking
+	@walk_vot_non_recreational float -- value of time benefit ($/hr) of non-recreational walking
 )
 RETURNS @tbl_physical_activity TABLE
 (
-	[base_active_persons] integer NOT NULL
-	,[build_active_persons] integer NOT NULL
-	,[diff_active_persons] integer NOT NULL
-	,[benefit_active_persons] float NOT NULL
-	,[diff_active_persons_coc] integer NOT NULL
-	,[benefit_active_persons_coc] float NOT NULL
-	,[diff_active_persons_senior] integer NOT NULL
-	,[benefit_active_persons_senior] float NOT NULL
-	,[diff_active_persons_minority] integer NOT NULL
-	,[benefit_active_persons_minority] float NOT NULL
-	,[diff_active_persons_low_income] integer NOT NULL
-	,[benefit_active_persons_low_income] float NOT NULL
+	[base_vot_bike] float NOT NULL
+	,[build_vot_bike] float NOT NULL
+	,[benefit_bike] float NOT NULL
+	,[benefit_bike_coc] float NOT NULL
+	,[benefit_bike_senior] float NOT NULL
+	,[benefit_bike_minority] float NOT NULL
+	,[benefit_bike_low_income] float NOT NULL
+	,[base_vot_walk] float NOT NULL
+	,[build_vot_walk] float NOT NULL
+	,[benefit_walk] float NOT NULL
+	,[benefit_walk_coc] float NOT NULL
+	,[benefit_walk_senior] float NOT NULL
+	,[benefit_walk_minority] float NOT NULL
+	,[benefit_walk_low_income] float NOT NULL
 )
 AS
 
 -- ===========================================================================
--- Author:		RSG and Gregor Schroeder
--- Create date: 7/02/2018
--- Description:	Translation and combination of the bca tool stored procedures
--- for the new abm database listed below. Given two input scenario_id values,
--- a threshold for minimum physical activity to define a person as active,
--- and the benefit of a person being physically active then returns table of
--- total physically active persons for the base and build scenarios by
+-- Author:		Gregor Schroeder
+-- Create date: 9/21/2018
+-- Description:	Given two input scenario_id values and input values for value
+-- of time benefits ($/hr) of recreation/non-recreational cycling/walking,
+-- calculates the monetary benefit of physically active transportation minutes
+--  for the base and build scenarios by
 -- Community of Concern and each element that indicates a Community of Concern
--- person (seniors, minorities, low income). Differences and benefits between
--- two base and build scenarios are calculated.
---	[dbo].[run_physical_activity_comparison]
---	[dbo].[run_physical_activity_processor]
---	[dbo].[run_physical_activity_summary]
+-- person (seniors, minorities, low income). Benefits between
+-- the base and build scenarios are calculated.
 -- ===========================================================================
 BEGIN
-	with [active_persons] AS (
-		SELECT
-			[person_trip].[scenario_id]
-			,MAX(CASE WHEN [person].[age] >= 75 THEN 1 ELSE 0 END) AS [senior]
-			,MAX(CASE	WHEN [person].[race] IN ('Some Other Race Alone',
-													'Asian Alone',
-													'Black or African American Alone',
-													'Two or More Major Race Groups',
-													'Native Hawaiian and Other Pacific Islander Alone',
-													'American Indian and Alaska Native Tribes specified; or American Indian or Alaska Native, not specified and no other races')
-								OR [person].[hispanic] = 'Hispanic' THEN 1
-							ELSE 0 END) AS [minority]
-			,MAX(CASE WHEN [household].[poverty] <= 2 THEN 1 ELSE 0 END) AS [low_income]
-			,MAX([person].[weight_person]) AS [weight_person]
-		FROM
-			[fact].[person_trip]
-		INNER JOIN
-			[dimension].[person]
-		ON
-			[person_trip].[scenario_id] = [person].[scenario_id]
-			AND [person_trip].[person_id] = [person].[person_id]
-		INNER JOIN
-			[dimension].[household]
-		ON
-			[person_trip].[scenario_id] = [household].[scenario_id]
-			AND [person_trip].[household_id] = [household].[household_id]
-		WHERE
-			[person_trip].[scenario_id] IN (@scenario_id_base, @scenario_id_build)
-			AND [person].[scenario_id] IN (@scenario_id_base, @scenario_id_build)
-			AND [household].[scenario_id] IN (@scenario_id_base, @scenario_id_build)
-			AND [person].[weight_person] > 0
-			AND [household].[weight_household] > 0
-		GROUP BY
-			[person_trip].[scenario_id]
-			,[person_trip].[person_id]
-		HAVING
-			SUM([person_trip].[time_walk] + [person_trip].[time_bike]) > @activity_threshold),
-	[active_persons_summary] AS (
-		SELECT
-			[scenario_id]
-			,SUM([weight_person]) AS [active_persons]
-			,SUM(CASE WHEN [senior] = 1 OR [minority] = 1 OR [low_income] = 1 THEN [weight_person] ELSE 0 END) AS [active_persons_coc]
-			,SUM(CASE WHEN [senior] = 1 THEN [weight_person] ELSE 0 END) AS [active_persons_senior]
-			,SUM(CASE WHEN [minority] = 1 THEN [weight_person] ELSE 0 END) AS [active_persons_minority]
-			,SUM(CASE WHEN [low_income] = 1 THEN [weight_person] ELSE 0 END) AS [active_persons_low_income]
-		FROM
-			[active_persons]
-		GROUP BY
-			[scenario_id]),
-	[scenario_summary] AS (
-		SELECT
-			SUM(CASE WHEN [scenario_id] = @scenario_id_base THEN [active_persons] ELSE 0 END) AS [base_active_persons]
-			,SUM(CASE WHEN [scenario_id] = @scenario_id_build THEN [active_persons] ELSE 0 END) AS [build_active_persons]
-			,SUM(CASE WHEN [scenario_id] = @scenario_id_base THEN [active_persons_coc] ELSE 0 END) AS [base_active_persons_coc]
-			,SUM(CASE WHEN [scenario_id] = @scenario_id_build THEN [active_persons_coc] ELSE 0 END) AS [build_active_persons_coc]
-			,SUM(CASE WHEN [scenario_id] = @scenario_id_base THEN [active_persons_senior] ELSE 0 END) AS [base_active_persons_senior]
-			,SUM(CASE WHEN [scenario_id] = @scenario_id_build THEN [active_persons_senior] ELSE 0 END) AS [build_active_persons_senior]
-			,SUM(CASE WHEN [scenario_id] = @scenario_id_base THEN [active_persons_minority] ELSE 0 END) AS [base_active_persons_minority]
-			,SUM(CASE WHEN [scenario_id] = @scenario_id_build THEN [active_persons_minority] ELSE 0 END) AS [build_active_persons_minority]
-			,SUM(CASE WHEN [scenario_id] = @scenario_id_base THEN [active_persons_low_income] ELSE 0 END) AS [base_active_persons_low_income]
-			,SUM(CASE WHEN [scenario_id] = @scenario_id_build THEN [active_persons_low_income] ELSE 0 END) AS [build_active_persons_low_income]
-		FROM
-			[active_persons_summary])
 	INSERT INTO @tbl_physical_activity
 	SELECT
-		[base_active_persons]
-		,[build_active_persons]
-		,[build_active_persons] - [base_active_persons] AS [diff_active_persons]
-		,([build_active_persons] - [base_active_persons]) * @activity_benefit AS [benefit_active_persons]
-		,[build_active_persons_coc] - [base_active_persons_coc] AS [diff_active_persons_coc]
-		,([build_active_persons_coc] - [base_active_persons_coc]) * @activity_benefit AS [benefit_active_persons_coc]
-		,[build_active_persons_senior] - [base_active_persons_senior] AS [diff_active_persons_senior]
-		,([build_active_persons_senior] - [base_active_persons_senior]) * @activity_benefit AS [benefit_active_persons_senior]
-		,[build_active_persons_minority] - [base_active_persons_minority] AS [diff_active_persons_minority]
-		,([build_active_persons_minority] - [base_active_persons_minority]) * @activity_benefit AS [benefit_active_persons_minority]
-		,[build_active_persons_low_income] - [base_active_persons_low_income] AS [diff_active_persons_low_income]
-		,([build_active_persons_low_income] - [base_active_persons_low_income]) * @activity_benefit AS [benefit_active_persons_low_income]
-	FROM
-		[scenario_summary]
+		[base_vot_bike]
+		,[build_vot_bike]
+		,[build_vot_bike] - [base_vot_bike] AS [benefit_bike]
+		,[build_vot_bike_coc] - [base_vot_bike_coc] AS [benefit_bike_coc]
+		,[build_vot_bike_senior] - [base_vot_bike_senior] AS [benefit_bike_senior]
+		,[build_vot_bike_minority] - [base_vot_bike_minority] AS [benefit_bike_minority]
+		,[build_vot_bike_low_income] - [base_vot_bike_low_income] AS [benefit_bike_low_income]
+		,[base_vot_walk]
+		,[build_vot_walk]
+		,[build_vot_walk] - [base_vot_walk] AS [benefit_walk]
+		,[build_vot_walk_coc] - [base_vot_walk_coc] AS [benefit_walk_coc]
+		,[build_vot_walk_senior] - [base_vot_walk_senior] AS [benefit_walk_senior]
+		,[build_vot_walk_minority] - [base_vot_walk_minority] AS [benefit_walk_minority]
+		,[build_vot_walk_low_income] - [base_vot_walk_low_income] AS [benefit_walk_low_income]
+	FROM (
+		SELECT
+			SUM(CASE WHEN [scenario_id] = @scenario_id_base THEN [vot_bike] ELSE 0 END) AS [base_vot_bike]
+			,SUM(CASE WHEN [scenario_id] = @scenario_id_build THEN [vot_bike] ELSE 0 END) AS [build_vot_bike]
+			,SUM(CASE WHEN [scenario_id] = @scenario_id_base AND ([senior] = 1 OR [minority] = 1 OR [low_income] = 1) THEN [vot_bike] ELSE 0 END) AS [base_vot_bike_coc]
+			,SUM(CASE WHEN [scenario_id] = @scenario_id_build AND ([senior] = 1 OR [minority] = 1 OR [low_income] = 1) THEN [vot_bike] ELSE 0 END) AS [build_vot_bike_coc]
+			,SUM(CASE WHEN [scenario_id] = @scenario_id_base AND [senior] = 1 THEN [vot_bike] ELSE 0 END) AS [base_vot_bike_senior]
+			,SUM(CASE WHEN [scenario_id] = @scenario_id_build AND [senior] = 1 THEN [vot_bike] ELSE 0 END) AS [build_vot_bike_senior]
+			,SUM(CASE WHEN [scenario_id] = @scenario_id_base AND [minority] = 1 THEN [vot_bike] ELSE 0 END) AS [base_vot_bike_minority]
+			,SUM(CASE WHEN [scenario_id] = @scenario_id_build AND [minority] = 1 THEN [vot_bike] ELSE 0 END) AS [build_vot_bike_minority]
+			,SUM(CASE WHEN [scenario_id] = @scenario_id_base AND [low_income] = 1 THEN [vot_bike] ELSE 0 END) AS [base_vot_bike_low_income]
+			,SUM(CASE WHEN [scenario_id] = @scenario_id_build AND [low_income] = 1 THEN [vot_bike] ELSE 0 END) AS [build_vot_bike_low_income]
+			,SUM(CASE WHEN [scenario_id] = @scenario_id_base THEN [vot_walk] ELSE 0 END) AS [base_vot_walk]
+			,SUM(CASE WHEN [scenario_id] = @scenario_id_build THEN [vot_walk] ELSE 0 END) AS [build_vot_walk]
+			,SUM(CASE WHEN [scenario_id] = @scenario_id_base AND ([senior] = 1 OR [minority] = 1 OR [low_income] = 1) THEN [vot_walk] ELSE 0 END) AS [base_vot_walk_coc]
+			,SUM(CASE WHEN [scenario_id] = @scenario_id_build AND ([senior] = 1 OR [minority] = 1 OR [low_income] = 1) THEN [vot_walk] ELSE 0 END) AS [build_vot_walk_coc]
+			,SUM(CASE WHEN [scenario_id] = @scenario_id_base AND [senior] = 1 THEN [vot_walk] ELSE 0 END) AS [base_vot_walk_senior]
+			,SUM(CASE WHEN [scenario_id] = @scenario_id_build AND [senior] = 1 THEN [vot_walk] ELSE 0 END) AS [build_vot_walk_senior]
+			,SUM(CASE WHEN [scenario_id] = @scenario_id_base AND [minority] = 1 THEN [vot_walk] ELSE 0 END) AS [base_vot_walk_minority]
+			,SUM(CASE WHEN [scenario_id] = @scenario_id_build AND [minority] = 1 THEN [vot_walk] ELSE 0 END) AS [build_vot_walk_minority]
+			,SUM(CASE WHEN [scenario_id] = @scenario_id_base AND [low_income] = 1 THEN [vot_walk] ELSE 0 END) AS [base_vot_walk_low_income]
+			,SUM(CASE WHEN [scenario_id] = @scenario_id_build AND [low_income] = 1 THEN [vot_walk] ELSE 0 END) AS [build_vot_walk_low_income]
+		FROM (
+			SELECT
+				[person_trip].[scenario_id]
+				,CASE WHEN [person].[age] >= 75 THEN 1 ELSE 0 END AS [senior]
+				,CASE	WHEN [person].[race] IN ('Some Other Race Alone',
+												 'Asian Alone',
+												 'Black or African American Alone',
+												 'Two or More Major Race Groups',
+								 				 'Native Hawaiian and Other Pacific Islander Alone',
+								 				 'American Indian and Alaska Native Tribes specified; or American Indian or Alaska Native, not specified and no other races')
+							OR [person].[hispanic] = 'Hispanic' THEN 1
+						ELSE 0 END AS [minority]
+				,CASE WHEN [household].[poverty] <= 2 THEN 1 ELSE 0 END AS [low_income]
+				,SUM(CASE	WHEN [purpose_tour].[purpose_tour_description] = 'Discretionary'
+							THEN [weight_person_trip] * [time_bike] * @bike_vot_recreational / 60 -- most but not all trips are recreational in this tour purpose, assume all
+							ELSE [weight_person_trip] * [time_bike] * @bike_vot_non_recreational / 60
+							END) AS [vot_bike]
+				,SUM(CASE	WHEN [purpose_tour].[purpose_tour_description] = 'Discretionary'
+							THEN [weight_person_trip] * [time_walk] * @walk_vot_recreational / 60 -- most but not all trips are recreational in this tour purpose, assume all
+							ELSE [weight_person_trip] * [time_walk] * @walk_vot_non_recreational / 60
+							END) AS [vot_walk] -- includes transit walk components
+			FROM
+				[fact].[person_trip]
+			INNER JOIN
+				[dimension].[model_trip]
+			ON
+				[person_trip].[model_trip_id] = [model_trip].[model_trip_id]
+			INNER JOIN
+				[dimension].[tour]
+			ON
+				[person_trip].[scenario_id] = [tour].[scenario_id]
+				AND [person_trip].[tour_id] = [tour].[tour_id]
+			INNER JOIN
+				[dimension].[purpose_tour]
+			ON
+				[tour].[purpose_tour_id] = [purpose_tour].[purpose_tour_id]
+			INNER JOIN
+				[dimension].[person]
+			ON
+				[person_trip].[scenario_id] = [person].[scenario_id]
+				AND [person_trip].[person_id] = [person].[person_id]
+			INNER JOIN
+				[dimension].[household]
+			ON
+				[person_trip].[scenario_id] = [household].[scenario_id]
+				AND [person_trip].[household_id] = [household].[household_id]
+			WHERE
+				[person_trip].[scenario_id] IN (@scenario_id_base, @scenario_id_build)
+				AND [tour].[scenario_id] IN (@scenario_id_base, @scenario_id_build)
+				AND [person].[scenario_id] IN (@scenario_id_base, @scenario_id_build)
+				AND [household].[scenario_id] IN (@scenario_id_base, @scenario_id_build)
+				AND [person].[weight_person] > 0
+				AND [household].[weight_household] > 0
+				AND [model_trip].[model_trip_description] IN ('Individual',
+															  'Internal-External',
+															  'Joint') -- resident models only
+			GROUP BY
+				[person_trip].[scenario_id]
+				,CASE WHEN [person].[age] >= 75 THEN 1 ELSE 0 END
+				,CASE	WHEN [person].[race] IN ('Some Other Race Alone',
+												 'Asian Alone',
+												 'Black or African American Alone',
+												 'Two or More Major Race Groups',
+								 				 'Native Hawaiian and Other Pacific Islander Alone',
+								 				 'American Indian and Alaska Native Tribes specified; or American Indian or Alaska Native, not specified and no other races')
+							OR [person].[hispanic] = 'Hispanic' THEN 1
+						ELSE 0 END
+				,CASE WHEN [household].[poverty] <= 2 THEN 1 ELSE 0 END
+		) AS [results_table_long]
+	) AS [results_table_wide]
 	RETURN
 END
 GO
