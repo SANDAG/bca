@@ -546,7 +546,7 @@ RETURNS @tbl_emissions TABLE
 	,[difference_Annual_SOx_TOTEX] float NOT NULL
 	,[difference_Annual_PM10_TOTAL] float NOT NULL
 	,[difference_Annual_CO2_TOTEX] float NOT NULL
-	,[benefit_Winter_CO2_TOTEX] float NOT NULL
+	,[benefit_Winter_CO_TOTEX] float NOT NULL
 	,[benefit_Annual_PM2_5_TOTAL] float NOT NULL
 	,[benefit_Summer_NOx_TOTEX] float NOT NULL
 	,[benefit_Summer_ROG_TOTAL] float NOT NULL
