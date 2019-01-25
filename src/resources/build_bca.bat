@@ -1,13 +1,12 @@
 @echo off
 
-
-set script_path="d:\dev\bca\src\sql\"
-set db_server=socioeca8.sandag.org
-set db_name=bca
-set abm_db_name=abm_2
-rem db_path and log_path values must be enclosed in double quotes
-set db_path="f:\sqldata\bca"
-set log_path="l:\sqldata"
+rem script_path, db_path, and log_path values must be enclosed in double quotes
+set script_path=
+set db_server=
+set db_name=
+set abm_db_name=
+set db_path=
+set log_path=
 
 echo Creating %db_name% on %db_server% at %db_path%
 echo Log file at %log_path%
