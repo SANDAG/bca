@@ -1,8 +1,3 @@
-USE [bca]
-GO
-
-
-
 CREATE PROCEDURE [bca].[run_comparison_year] @analysis_id integer, @scenario_year smallint
 	WITH EXECUTE AS CALLER
 AS

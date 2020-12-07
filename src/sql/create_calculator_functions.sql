@@ -1,6 +1,5 @@
 -- Create aggregate_toll table valued function
-IF  EXISTS (SELECT * FROM sys.objects WHERE object_id = OBJECT_ID(N'[bca].[fn_aggregate_toll]') AND type in (N'FN', N'IF', N'TF', N'FS', N'FT'))
-DROP FUNCTION [bca].[fn_aggregate_toll]
+DROP FUNCTION IF EXISTS [bca].[fn_aggregate_toll]
 GO
 
 CREATE FUNCTION [bca].[fn_aggregate_toll]
@@ -20,6 +19,7 @@ AS
 -- ===========================================================================
 -- Author:		RSG and Gregor Schroeder
 -- Create date: 6/29/2018
+-- Updated: 12/3/2020 for ABM 14.2.1 toll cost field rename
 -- Description:	Translation and combination of the bca tool stored procedures
 -- for the new abm database listed below. Given two input scenario_id values,
 -- returns table of total auto mode toll costs segmented by base and build
@@ -33,7 +33,7 @@ BEGIN
         SELECT
             [person_trip].[scenario_id]
             ,[model_trip].[model_trip_description]
-            ,SUM([person_trip].[toll_cost_drive] * [person_trip].[weight_trip]) AS [toll_cost_drive]
+            ,SUM([person_trip].[cost_toll_drive] * [person_trip].[weight_trip]) AS [cost_toll_drive]
         FROM
             [fact].[person_trip]
         INNER JOIN
@@ -49,16 +49,16 @@ BEGIN
 	SELECT
 		SUM(CASE	WHEN [scenario_id] = @scenario_id_base
 						AND [model_trip_description] = 'Commercial Vehicle'
-					THEN [toll_cost_drive] ELSE 0 END) AS [base_toll_ctm]
+					THEN [cost_toll_drive] ELSE 0 END) AS [base_toll_ctm]
 		,SUM(CASE	WHEN [scenario_id] = @scenario_id_build
 						AND [model_trip_description] = 'Commercial Vehicle'
-					THEN [toll_cost_drive] ELSE 0 END) AS [build_toll_ctm]
+					THEN [cost_toll_drive] ELSE 0 END) AS [build_toll_ctm]
 		,SUM(CASE	WHEN [scenario_id] = @scenario_id_base
 						AND [model_trip_description] = 'Truck'
-					THEN [toll_cost_drive] ELSE 0 END) AS [base_toll_truck]
+					THEN [cost_toll_drive] ELSE 0 END) AS [base_toll_truck]
 		,SUM(CASE	WHEN [scenario_id] = @scenario_id_build
 						AND [model_trip_description] = 'Truck'
-					THEN [toll_cost_drive] ELSE 0 END) AS [build_toll_truck]
+					THEN [cost_toll_drive] ELSE 0 END) AS [build_toll_truck]
 	FROM
 		toll_costs
 	RETURN
@@ -74,8 +74,7 @@ GO
 
 
 -- Create aggregate trips table valued function
-IF  EXISTS (SELECT * FROM sys.objects WHERE object_id = OBJECT_ID(N'[bca].[fn_aggregate_trips]') AND type in (N'FN', N'IF', N'TF', N'FS', N'FT'))
-DROP FUNCTION [bca].[fn_aggregate_trips]
+DROP FUNCTION IF EXISTS [bca].[fn_aggregate_trips]
 GO
 
 CREATE FUNCTION [bca].[fn_aggregate_trips]
@@ -99,6 +98,8 @@ AS
 -- ===========================================================================
 -- Author:		RSG and Gregor Schroeder
 -- Create date: 7/16/2018
+-- Updated: 12/3/2020 for ABM 14.2.1 new trip modes, value of time field
+--   update, new assignment modes, transponder availability
 -- Description:	Translation and combination of the bca tool stored procedures
 -- for the new abm database listed below. Given two input scenario_id values,
 -- and input values of time for commercial travel model and truck model trips,
@@ -212,31 +213,23 @@ BEGIN
 				,[geography_trip_origin].[trip_origin_taz_13]
 				,[geography_trip_destination].[trip_destination_taz_13]
 				-- all trip modes are directly mapped to assignment modes for auto
-                -- excepting all ctm modes, the airport model taxi mode, and the
-                -- individual model school bus mode
-				,CASE	WHEN [mode_trip].[mode_trip_description] = 'Heavy Truck - Non-Toll'
-						THEN 'Heavy Heavy Duty Truck (Non-Toll)'
-						WHEN [mode_trip].[mode_trip_description] = 'Heavy Truck - Toll'
-						THEN 'Heavy Heavy Duty Truck (Toll)'
-						WHEN [mode_trip].[mode_trip_description] = 'Intermediate Truck - Non-Toll'
-						THEN 'Light Heavy Duty Truck (Non-Toll)'
-						WHEN [mode_trip].[mode_trip_description] = 'Intermediate Truck - Toll'
-						THEN 'Light Heavy Duty Truck (Toll)'
-						WHEN [mode_trip].[mode_trip_description] = 'Light Vehicle - Non-Toll'
-						THEN 'Drive Alone Non-Toll'
-						WHEN [mode_trip].[mode_trip_description] = 'Light Vehicle - Toll'
-						THEN 'Drive Alone Toll Eligible'
-						WHEN [mode_trip].[mode_trip_description] = 'Medium Truck - Non-Toll'
-						THEN 'Medium Heavy Duty Truck (Non-Toll)'
-						WHEN [mode_trip].[mode_trip_description] = 'Medium Truck - Toll'
-						THEN 'Medium Heavy Duty Truck (Toll)'
-						WHEN [mode_trip].[mode_trip_description] = 'School Bus'
-						THEN 'Drive Alone Non-Toll' -- School Bus trips use Drive Alone Non-Toll skims
-						WHEN [mode_trip].[mode_trip_description] = 'Taxi'
-						THEN 'Shared Ride 2 Non-Toll' -- Taxi trips use Shared Ride 2 Non-Toll skims
+                -- excepting the truck modes which are collapsed into Truck
+                -- excepting the Taxi, School Bus, Non-Pooled TNC, and Pooled TNC which all use Shared Ride 3+
+				,CASE WHEN [mode_trip].[mode_trip_description] IN ('Light Heavy Duty Truck',
+                                                                   'Medium Heavy Duty Truck',
+                                                                   'Heavy Heavy Duty Truck')
+						THEN 'Truck'
+                        WHEN [mode_trip].[mode_trip_description] IN ('Non-Pooled TNC',
+                                                                     'Pooled TNC',
+                                                                     'School Bus',
+                                                                     'Taxi')
+						THEN 'Shared Ride 3+'
 						ELSE [mode_trip].[mode_trip_description]
 						END AS [assignment_mode] -- recode trip modes to assignment modes
-				,[value_of_time_drive_bin_id]
+				,[value_of_time_category_id]
+                ,CASE WHEN [mode_trip].[mode_trip_description] = 'Drive Alone'
+                      THEN [transponder_available_id]
+                      ELSE 0 END AS [transponder_available_id]  -- only drive alone trips use transponder for assignment
 				,[time_trip_start].[trip_start_abm_5_tod]
 				,[person_trip].[time_total]
 				,[person_trip].[weight_person_trip]
@@ -276,29 +269,24 @@ BEGIN
 				[person_trip].[scenario_id]
 				,[geography_trip_origin].[trip_origin_taz_13]
 				,[geography_trip_destination].[trip_destination_taz_13]
-				,CASE	WHEN [mode_trip].[mode_trip_description] = 'Heavy Truck - Non-Toll'
-						THEN 'Heavy Heavy Duty Truck (Non-Toll)'
-						WHEN [mode_trip].[mode_trip_description] = 'Heavy Truck - Toll'
-						THEN 'Heavy Heavy Duty Truck (Toll)'
-						WHEN [mode_trip].[mode_trip_description] = 'Intermediate Truck - Non-Toll'
-						THEN 'Light Heavy Duty Truck (Non-Toll)'
-						WHEN [mode_trip].[mode_trip_description] = 'Intermediate Truck - Toll'
-						THEN 'Light Heavy Duty Truck (Toll)'
-						WHEN [mode_trip].[mode_trip_description] = 'Light Vehicle - Non-Toll'
-						THEN 'Drive Alone Non-Toll'
-						WHEN [mode_trip].[mode_trip_description] = 'Light Vehicle - Toll'
-						THEN 'Drive Alone Toll Eligible'
-						WHEN [mode_trip].[mode_trip_description] = 'Medium Truck - Non-Toll'
-						THEN 'Medium Heavy Duty Truck (Non-Toll)'
-						WHEN [mode_trip].[mode_trip_description] = 'Medium Truck - Toll'
-						THEN 'Medium Heavy Duty Truck (Toll)'
-						WHEN [mode_trip].[mode_trip_description] = 'School Bus'
-						THEN 'Drive Alone Non-Toll' -- School Bus trips use Drive Alone Non-Toll skims
-						WHEN [mode_trip].[mode_trip_description] = 'Taxi'
-						THEN 'Shared Ride 2 Non-Toll' -- Taxi trips use Shared Ride 2 Non-Toll skims
+				-- all trip modes are directly mapped to assignment modes for auto
+                -- excepting the truck modes which are collapsed into Truck
+                -- excepting the Taxi, School Bus, Non-Pooled TNC, and Pooled TNC which all use Shared Ride 3+
+				,CASE WHEN [mode_trip].[mode_trip_description] IN ('Light Heavy Duty Truck',
+                                                                   'Medium Heavy Duty Truck',
+                                                                   'Heavy Heavy Duty Truck')
+						THEN 'Truck'
+                        WHEN [mode_trip].[mode_trip_description] IN ('Non-Pooled TNC',
+                                                                     'Pooled TNC',
+                                                                     'School Bus',
+                                                                     'Taxi')
+						THEN 'Shared Ride 3+'
 						ELSE [mode_trip].[mode_trip_description]
 						END AS [assignment_mode] -- recode trip modes to assignment modes
-				,[value_of_time_drive_bin_id]
+				,[value_of_time_category_id]
+                ,CASE WHEN [mode_trip].[mode_trip_description] = 'Drive Alone'
+                      THEN [transponder_available_id]
+                      ELSE 0 END AS [transponder_available_id]  -- only drive alone trips use transponder for assignment
 				,[time_trip_start].[trip_start_abm_5_tod]
 				-- use trip weights here instead of person trips weights as this is in line with assignment
 				,SUM(([person_trip].[weight_trip] * [person_trip].[time_total])) / SUM([person_trip].[weight_trip]) AS [time_total]
@@ -322,55 +310,35 @@ BEGIN
 				[person_trip].[time_trip_start_id] = [time_trip_start].[time_trip_start_id]
 			WHERE
 				[person_trip].[scenario_id] IN (@scenario_id_base, @scenario_id_build)
-				AND [mode_trip].[mode_trip_description] IN ('Drive Alone Non-Toll',
-															'Drive Alone Toll Eligible',
-															'Heavy Heavy Duty Truck (Non-Toll)',
-															'Heavy Heavy Duty Truck (Toll)',
-															'Heavy Truck - Non-Toll',
-															'Heavy Truck - Toll',
-															'Intermediate Truck - Non-Toll',
-															'Intermediate Truck - Toll',
-															'Light Heavy Duty Truck (Non-Toll)',
-															'Light Heavy Duty Truck (Toll)',
-															'Light Vehicle - Non-Toll',
-															'Light Vehicle - Toll',
-															'Medium Heavy Duty Truck (Non-Toll)',
-															'Medium Heavy Duty Truck (Toll)',
-															'Medium Truck - Non-Toll',
-															'Medium Truck - Toll',
+				AND [mode_trip].[mode_trip_description] IN ('Drive Alone',
+															'Heavy Heavy Duty Truck',
+															'Light Heavy Duty Truck',
+															'Medium Heavy Duty Truck',
+                                                            'Non-Pooled TNC',
+                                                            'Pooled TNC',
 															'School Bus',
-															'Shared Ride 2 Non-Toll',
-															'Shared Ride 2 Toll Eligible',
-															'Shared Ride 3 Non-Toll',
-															'Shared Ride 3 Toll Eligible',
+															'Shared Ride 2',
+															'Shared Ride 3+',
 															'Taxi') -- auto modes
 			GROUP BY
 				[person_trip].[scenario_id]
 				,[geography_trip_origin].[trip_origin_taz_13]
 				,[geography_trip_destination].[trip_destination_taz_13]
-				,CASE	WHEN [mode_trip].[mode_trip_description] = 'Heavy Truck - Non-Toll'
-						THEN 'Heavy Heavy Duty Truck (Non-Toll)'
-						WHEN [mode_trip].[mode_trip_description] = 'Heavy Truck - Toll'
-						THEN 'Heavy Heavy Duty Truck (Toll)'
-						WHEN [mode_trip].[mode_trip_description] = 'Intermediate Truck - Non-Toll'
-						THEN 'Light Heavy Duty Truck (Non-Toll)'
-						WHEN [mode_trip].[mode_trip_description] = 'Intermediate Truck - Toll'
-						THEN 'Light Heavy Duty Truck (Toll)'
-						WHEN [mode_trip].[mode_trip_description] = 'Light Vehicle - Non-Toll'
-						THEN 'Drive Alone Non-Toll'
-						WHEN [mode_trip].[mode_trip_description] = 'Light Vehicle - Toll'
-						THEN 'Drive Alone Toll Eligible'
-						WHEN [mode_trip].[mode_trip_description] = 'Medium Truck - Non-Toll'
-						THEN 'Medium Heavy Duty Truck (Non-Toll)'
-						WHEN [mode_trip].[mode_trip_description] = 'Medium Truck - Toll'
-						THEN 'Medium Heavy Duty Truck (Toll)'
-						WHEN [mode_trip].[mode_trip_description] = 'School Bus'
-						THEN 'Drive Alone Non-Toll' -- School Bus trips use Drive Alone Non-Toll skims
-						WHEN [mode_trip].[mode_trip_description] = 'Taxi'
-						THEN 'Shared Ride 2 Non-Toll' -- Taxi trips use Shared Ride 2 Non-Toll skims
+				,CASE WHEN [mode_trip].[mode_trip_description] IN ('Light Heavy Duty Truck',
+                                                                   'Medium Heavy Duty Truck',
+                                                                   'Heavy Heavy Duty Truck')
+						THEN 'Truck'
+                        WHEN [mode_trip].[mode_trip_description] IN ('Non-Pooled TNC',
+                                                                     'Pooled TNC',
+                                                                     'School Bus',
+                                                                     'Taxi')
+						THEN 'Shared Ride 3+'
 						ELSE [mode_trip].[mode_trip_description]
 						END
-				,[value_of_time_drive_bin_id]
+				,[value_of_time_category_id]
+                ,CASE WHEN [mode_trip].[mode_trip_description] = 'Drive Alone'
+                      THEN [transponder_available_id]
+                      ELSE 0 END
 				,[time_trip_start].[trip_start_abm_5_tod]
 			HAVING
 				SUM([person_trip].[weight_trip]) > 0
@@ -380,7 +348,8 @@ BEGIN
 			AND [trips_ctm_truck].[trip_origin_taz_13] = [auto_skims].[trip_origin_taz_13]
 			AND [trips_ctm_truck].[trip_destination_taz_13] = [auto_skims].[trip_destination_taz_13]
 			AND [trips_ctm_truck].[assignment_mode] = [auto_skims].[assignment_mode]
-			AND [trips_ctm_truck].[value_of_time_drive_bin_id] = [auto_skims].[value_of_time_drive_bin_id]
+			AND [trips_ctm_truck].[value_of_time_category_id] = [auto_skims].[value_of_time_category_id]
+            AND [trips_ctm_truck].[transponder_available_id] = [auto_skims].[transponder_available_id]
 			AND [trips_ctm_truck].[trip_start_abm_5_tod] = [auto_skims].[trip_start_abm_5_tod]
 		GROUP BY
 			[trips_ctm_truck].[scenario_id]
@@ -399,8 +368,7 @@ GO
 
 
 -- Create auto_ownership table valued function
-IF  EXISTS (SELECT * FROM sys.objects WHERE object_id = OBJECT_ID(N'[bca].[fn_auto_ownership]') AND type in (N'FN', N'IF', N'TF', N'FS', N'FT'))
-DROP FUNCTION [bca].[fn_auto_ownership]
+DROP FUNCTION IF EXISTS [bca].[fn_auto_ownership]
 GO
 
 CREATE FUNCTION [bca].[fn_auto_ownership]
@@ -426,6 +394,9 @@ AS
 -- ===========================================================================
 -- Author:		RSG and Gregor Schroeder
 -- Create date: 6/30/2018
+-- Updated: 12/3/2020 for ABM 14.2.1 removing household and person weight
+--   fields and adding where clause to remove NA household and person records
+--   updated to numeric [autos] field
 -- Description:	Translation and combination of the bca tool stored procedures
 -- for the new abm database listed below. Given two input scenario_id values,
 -- returns table of total auto ownership, costs, and differences between the
@@ -451,9 +422,7 @@ BEGIN
 							 OR [person].[hispanic] = 'Hispanic' THEN 1
 						 ELSE 0 END) AS [minority]
 			,MAX(CASE WHEN [household].[poverty] <= 2 THEN 1 ELSE 0 END) AS [low_income]
-			-- note the autos field contains the 4+ category, set to 4 until better estimate of 4+ group can be obtained
-			,MAX(CASE	WHEN [household].[autos] = '4+' THEN 4 ELSE CONVERT(integer, [household].[autos]) END) AS [autos]
-			,MAX([household].[weight_household]) AS [weight_household]
+			,MAX([household].[autos]) AS [autos]
 		FROM
 			[dimension].[person]
 		INNER JOIN
@@ -464,19 +433,19 @@ BEGIN
 		WHERE
 			[person].[scenario_id] IN (@scenario_id_base, @scenario_id_build)
 			AND [household].[scenario_id] IN (@scenario_id_base, @scenario_id_build)
-			AND [person].[weight_person] > 0
-			AND [household].[weight_household] > 0
+			AND [person].[person_id] > 0  -- remove Not Applicable record
+			AND [household].[household_id] > 0  -- remove Not Applicable record
 		GROUP BY
 			[person].[scenario_id]
 			,[person].[household_id]),
 	[households_summary] AS (
 		SELECT
 			[scenario_id]
-			,SUM([weight_household] * [autos]) AS [autos]
-			,SUM(CASE WHEN [senior] = 1 OR [minority] = 1 OR [low_income] = 1 THEN [weight_household] * [autos] ELSE 0 END) AS [autos_coc_hh]
-			,SUM(CASE WHEN [senior] = 1 THEN [weight_household] * [autos] ELSE 0 END) AS [autos_senior_hh]
-			,SUM(CASE WHEN [minority] = 1 THEN [weight_household] * [autos] ELSE 0 END) AS [autos_minority_hh]
-			,SUM(CASE WHEN [low_income] = 1 THEN [weight_household] * [autos] ELSE 0 END) AS [autos_low_income_hh]
+			,SUM([autos]) AS [autos]
+			,SUM(CASE WHEN [senior] = 1 OR [minority] = 1 OR [low_income] = 1 THEN [autos] ELSE 0 END) AS [autos_coc_hh]
+			,SUM(CASE WHEN [senior] = 1 THEN [autos] ELSE 0 END) AS [autos_senior_hh]
+			,SUM(CASE WHEN [minority] = 1 THEN [autos] ELSE 0 END) AS [autos_minority_hh]
+			,SUM(CASE WHEN [low_income] = 1 THEN [autos] ELSE 0 END) AS [autos_low_income_hh]
 		FROM
 			[households]
 		GROUP BY
@@ -521,8 +490,7 @@ GO
 
 
 -- Create emissions table valued function
-IF  EXISTS (SELECT * FROM sys.objects WHERE object_id = OBJECT_ID(N'[bca].[fn_emissions]') AND type in (N'FN', N'IF', N'TF', N'FS', N'FT'))
-DROP FUNCTION [bca].[fn_emissions]
+DROP FUNCTION IF EXISTS [bca].[fn_emissions]
 GO
 
 CREATE FUNCTION [bca].[fn_emissions]
@@ -665,8 +633,7 @@ GO
 
 
 -- Create demographics table valued function
-IF  EXISTS (SELECT * FROM sys.objects WHERE object_id = OBJECT_ID(N'[bca].[fn_demographics]') AND type in (N'FN', N'IF', N'TF', N'FS', N'FT'))
-DROP FUNCTION [bca].[fn_demographics]
+DROP FUNCTION IF EXISTS [bca].[fn_demographics]
 GO
 
 CREATE FUNCTION [bca].[fn_demographics]
@@ -692,6 +659,8 @@ AS
 -- ===========================================================================
 -- Author:		RSG and Gregor Schroeder
 -- Create date: 7/2/2018
+-- Updated: 12/3/2020 for ABM 14.2.1 removing household and person weight fields
+--   and adding where clause to remove NA household and person records
 -- Description:	Translation and combination of the bca tool stored procedures
 -- for the new abm database listed below. Given two input scenario_id values,
 -- returns table of total base and build scenario persons and total persons
@@ -704,27 +673,27 @@ BEGIN
 with [person_summary] AS (
 	SELECT
 		[person].[scenario_id]
-		,SUM([person].[weight_person]) AS [persons]
-		,SUM(CASE	WHEN [person].[age] >= 75 THEN [person].[weight_person]
+		,COUNT([person_id]) AS [persons]
+		,SUM(CASE	WHEN [person].[age] >= 75 THEN 1
 					WHEN [person].[race] IN ('Some Other Race Alone',
-												'Asian Alone',
-												'Black or African American Alone',
-												'Two or More Major Race Groups',
-												'Native Hawaiian and Other Pacific Islander Alone',
-												'American Indian and Alaska Native Tribes specified; or American Indian or Alaska Native, not specified and no other races')
-							OR [person].[hispanic] = 'Hispanic' THEN [person].[weight_person]
-					WHEN [household].[poverty] <= 2 THEN [person].[weight_person]
+											 'Asian Alone',
+											 'Black or African American Alone',
+											 'Two or More Major Race Groups',
+											 'Native Hawaiian and Other Pacific Islander Alone',
+											 'American Indian and Alaska Native Tribes specified; or American Indian or Alaska Native, not specified and no other races')
+							OR [person].[hispanic] = 'Hispanic' THEN 1
+					WHEN [household].[poverty] <= 2 THEN 1
 					ELSE 0 END) AS [persons_coc]
-		,SUM(CASE WHEN [person].[age] >= 75 THEN [person].[weight_person] ELSE 0 END) AS [persons_senior]
+		,SUM(CASE WHEN [person].[age] >= 75 THEN 1 ELSE 0 END) AS [persons_senior]
 		,SUM(CASE	WHEN [person].[race] IN ('Some Other Race Alone',
 												'Asian Alone',
 												'Black or African American Alone',
 												'Two or More Major Race Groups',
 												'Native Hawaiian and Other Pacific Islander Alone',
 												'American Indian and Alaska Native Tribes specified; or American Indian or Alaska Native, not specified and no other races')
-							OR [person].[hispanic] = 'Hispanic' THEN [person].[weight_person]
-						ELSE 0 END) AS [persons_minority]
-		,SUM(CASE WHEN [household].[poverty] <= 2 THEN [person].[weight_person] ELSE 0 END) AS [persons_low_income]
+							OR [person].[hispanic] = 'Hispanic'
+                    THEN 1 ELSE 0 END) AS [persons_minority]
+		,SUM(CASE WHEN [household].[poverty] <= 2 THEN 1 ELSE 0 END) AS [persons_low_income]
 	FROM
 		[dimension].[person]
 	INNER JOIN
@@ -735,8 +704,8 @@ with [person_summary] AS (
 	WHERE
 		[person].[scenario_id] IN (@scenario_id_base, @scenario_id_build)
 		AND [household].[scenario_id] IN (@scenario_id_base, @scenario_id_build)
-		AND [person].[weight_person] > 0
-		AND [household].[weight_household] > 0
+		AND [person].[person_id] > 0  -- remove Not Applicable records
+		AND [household].[household_id] > 0  -- remove Not Applicable records
 	GROUP BY
 		[person].[scenario_id])
 INSERT INTO @tbl_demographics
@@ -766,8 +735,7 @@ GO
 
 
 -- Create highway link table valued function
-IF  EXISTS (SELECT * FROM sys.objects WHERE object_id = OBJECT_ID(N'[bca].[fn_highway_link]') AND type in (N'FN', N'IF', N'TF', N'FS', N'FT'))
-DROP FUNCTION [bca].[fn_highway_link]
+DROP FUNCTION IF EXISTS [bca].[fn_highway_link]
 GO
 
 CREATE FUNCTION [bca].[fn_highway_link]
@@ -811,6 +779,8 @@ AS
 -- ===========================================================================
 -- Author:		RSG and Gregor Schroeder
 -- Create date: 7/09/2018
+-- Updated: 12/3/2020 for ABM 14.2.1 new assignment modes, add filter to remove
+--   records with bus preload flow only but no free flow time or travel time
 -- Description:	Translation and combination of the bca tool stored procedures
 -- for the new abm database listed below. Given two input scenario_id values,
 -- returns and compares operating costs, reliability costs, and crash costs
@@ -854,24 +824,18 @@ BEGIN
 			SELECT
 				[scenario_id]
 				,[hwy_link_ab_tod_id]
-				,SUM(CASE	WHEN [mode].[mode_description] IN ('Drive Alone Non-Toll',
-															   'Drive Alone Toll Eligible',
-															   'Shared Ride 2 Non-Toll',
-															   'Shared Ride 2 Toll Eligible',
-															   'Shared Ride 3 Non-Toll',
-															   'Shared Ride 3 Toll Eligible')
+				,SUM(CASE	WHEN [mode].[mode_description] IN ('Drive Alone',
+															   'Shared Ride 2',
+															   'Shared Ride 3+')
 							THEN [flow]
 							ELSE 0 END) AS [flow_auto]
-				,SUM(CASE	WHEN [mode].[mode_description] IN ('Light Heavy Duty Truck (Non-Toll)',
-															   'Light Heavy Duty Truck (Toll)')
+				,SUM(CASE	WHEN [mode].[mode_description] ='Light Heavy Duty Truck'
 							THEN [flow]
 							ELSE 0 END) AS [flow_lhdt]
-				,SUM(CASE	WHEN [mode].[mode_description] IN ('Medium Heavy Duty Truck (Non-Toll)',
-															   'Medium Heavy Duty Truck (Toll)')
+				,SUM(CASE	WHEN [mode].[mode_description] = 'Medium Heavy Duty Truck'
 							THEN [flow]
 							ELSE 0 END) AS [flow_mhdt]
-				,SUM(CASE	WHEN [mode].[mode_description] IN ('Heavy Heavy Duty Truck (Non-Toll)',
-															   'Heavy Heavy Duty Truck (Toll)')
+				,SUM(CASE	WHEN [mode].[mode_description] = 'Heavy Heavy Duty Truck'
 							THEN [flow]
 							ELSE 0 END) AS [flow_hhdt]
 			FROM
@@ -893,7 +857,9 @@ BEGIN
 			[hwy_flow].[scenario_id] IN (@scenario_id_base, @scenario_id_build)
 			AND [hwy_link].[scenario_id] IN (@scenario_id_base, @scenario_id_build)
 			AND [hwy_link_ab_tod].[scenario_id] IN (@scenario_id_base, @scenario_id_build)
-			AND [hwy_flow].[flow] > 0),
+			AND [hwy_flow].[flow] > 0
+            -- there are records with bus preload but no time(s)
+            AND [hwy_link_ab_tod].[tm] > 0),
 	[calc_ab_tod] AS (
 		SELECT
 			[scenario_id]
@@ -982,8 +948,7 @@ GO
 
 
 -- Create physical_activity table valued function
-IF  EXISTS (SELECT * FROM sys.objects WHERE object_id = OBJECT_ID(N'[bca].[fn_physical_activity]') AND type in (N'FN', N'IF', N'TF', N'FS', N'FT'))
-DROP FUNCTION [bca].[fn_physical_activity]
+DROP FUNCTION IF EXISTS [bca].[fn_physical_activity]
 GO
 
 CREATE FUNCTION [bca].[fn_physical_activity]
@@ -1017,6 +982,8 @@ AS
 -- ===========================================================================
 -- Author:		Gregor Schroeder
 -- Create date: 9/21/2018
+-- Updated: 12/3/2020 for ABM 14.2.1 removing household and person weight fields
+--   and adding where clause to remove NA household and person records
 -- Description:	Given two input scenario_id values and input values for value
 -- of time benefits ($/hr) of recreation/non-recreational cycling/walking,
 -- calculates the monetary benefit of physically active transportation minutes
@@ -1115,8 +1082,8 @@ BEGIN
 				AND [tour].[scenario_id] IN (@scenario_id_base, @scenario_id_build)
 				AND [person].[scenario_id] IN (@scenario_id_base, @scenario_id_build)
 				AND [household].[scenario_id] IN (@scenario_id_base, @scenario_id_build)
-				AND [person].[weight_person] > 0
-				AND [household].[weight_household] > 0
+				AND [person].[person_id] > 0  -- remove Not Applicable records
+				AND [household].[household_id] > 0  -- remove Not Applicable records
 				AND [model_trip].[model_trip_description] IN ('Individual',
 															  'Internal-External',
 															  'Joint') -- resident models only
@@ -1147,8 +1114,7 @@ GO
 
 
 -- Create active transportation resident trips table valued function
-IF  EXISTS (SELECT * FROM sys.objects WHERE object_id = OBJECT_ID(N'[bca].[fn_resident_trips_at]') AND type in (N'FN', N'IF', N'TF', N'FS', N'FT'))
-DROP FUNCTION [bca].[fn_resident_trips_at]
+DROP FUNCTION IF EXISTS [bca].[fn_resident_trips_at]
 GO
 
 CREATE FUNCTION [bca].[fn_resident_trips_at]
@@ -1185,6 +1151,9 @@ AS
 -- ===========================================================================
 -- Author:		RSG and Gregor Schroeder
 -- Create date: 7/24/2018
+-- Update: 12/3/2020 Removing household and person weight fields
+--   and adding where clause to remove NA household and person records
+--   Added taz-taz skim matching when mgra-mgra fails.
 -- Description:	Translation and combination of the bca tool stored procedures
 -- for the new abm database listed below. Given two input scenario_id values,
 -- and input values of time for Work and Non-Work tour purpose trips,
@@ -1198,17 +1167,14 @@ AS
 --	[dbo].[run_person_trip_summary]
 -- ===========================================================================
 BEGIN
-    with [at_skims] AS (
+    with [at_skims_mgra] AS (
         -- create base and build scenario active transportation skims from person trips table
-        -- skims are segmented by mgra-mgra and assignment mode
-        -- the geography surrogate keys include taz-taz od pairs to account for external zones
-        -- if a trip is not present in the person trips table corresponding to a skim then the skim
-        -- is not present here
+        -- skims are segmented by mgra-mgra and assignment mode (bike+walk)
+        -- if a trip is not present in the person trips table corresponding to a skim then the skim is not present here
         SELECT
             [person_trip].[scenario_id]
-            -- at trips match at skims geographies, no need for aggregation
-            ,[person_trip].[geography_trip_origin_id]
-            ,[person_trip].[geography_trip_destination_id]
+            ,[geography_trip_origin].[trip_origin_mgra_13]
+            ,[geography_trip_destination].[trip_destination_mgra_13]
             -- all trip modes are directly mapped to assignment modes for
             -- active transportation assignment modes
             ,[mode_trip].[mode_trip_description] AS [assignment_mode]
@@ -1220,14 +1186,61 @@ BEGIN
             [dimension].[mode_trip]
         ON
             [person_trip].[mode_trip_id] = [mode_trip].[mode_trip_id]
+        INNER JOIN
+            [dimension].[geography_trip_origin]
+        ON
+            [person_trip].[geography_trip_origin_id] = [geography_trip_origin].[geography_trip_origin_id]
+        INNER JOIN
+            [dimension].[geography_trip_destination]
+        ON
+            [person_trip].[geography_trip_destination_id] = [geography_trip_destination].[geography_trip_destination_id]
         WHERE
             [person_trip].[scenario_id] IN (@scenario_id_base, @scenario_id_build)
             -- active transportation modes only
             AND [mode_trip].[mode_trip_description] IN ('Bike', 'Walk')
         GROUP BY
             [person_trip].[scenario_id]
-            ,[person_trip].[geography_trip_origin_id]
-            ,[person_trip].[geography_trip_destination_id]
+            ,[geography_trip_origin].[trip_origin_mgra_13]
+            ,[geography_trip_destination].[trip_destination_mgra_13]
+            ,[mode_trip].[mode_trip_description]
+        HAVING
+            SUM([person_trip].[weight_trip]) > 0
+    ),
+    [at_skims_taz] AS (
+        -- create base and build scenario active transportation skims from person trips table
+        -- skims are segmented by taz-taz and assignment mode (bike+walk)
+        -- if a trip is not present in the person trips table corresponding to a skim then the skim is not present here
+        SELECT
+            [person_trip].[scenario_id]
+            ,[geography_trip_origin].[trip_origin_taz_13]
+            ,[geography_trip_destination].[trip_destination_taz_13]
+            -- all trip modes are directly mapped to assignment modes for
+            -- active transportation assignment modes
+            ,[mode_trip].[mode_trip_description] AS [assignment_mode]
+            -- use trip weights here instead of person trips weights as this is in line with assignment
+            ,SUM(([person_trip].[weight_trip] * [person_trip].[time_total])) / SUM([person_trip].[weight_trip]) AS [time_total]
+        FROM
+            [fact].[person_trip]
+        INNER JOIN
+            [dimension].[mode_trip]
+        ON
+            [person_trip].[mode_trip_id] = [mode_trip].[mode_trip_id]
+        INNER JOIN
+            [dimension].[geography_trip_origin]
+        ON
+            [person_trip].[geography_trip_origin_id] = [geography_trip_origin].[geography_trip_origin_id]
+        INNER JOIN
+            [dimension].[geography_trip_destination]
+        ON
+            [person_trip].[geography_trip_destination_id] = [geography_trip_destination].[geography_trip_destination_id]
+        WHERE
+            [person_trip].[scenario_id] IN (@scenario_id_base, @scenario_id_build)
+            -- active transportation modes only
+            AND [mode_trip].[mode_trip_description] IN ('Bike', 'Walk')
+        GROUP BY
+            [person_trip].[scenario_id]
+            ,[geography_trip_origin].[trip_origin_taz_13]
+            ,[geography_trip_destination].[trip_destination_taz_13]
             ,[mode_trip].[mode_trip_description]
         HAVING
             SUM([person_trip].[weight_trip]) > 0
@@ -1239,33 +1252,34 @@ BEGIN
         -- append tour purpose and person Community of Concern information
         -- restrict to active transportation modes (Bike, Walk)
         -- skims are segmented by mgra-mgra and assignment mode
-        -- the geography surrogate keys include taz-taz od pairs to account for external zones
+        -- include tazs to allow taz-taz skim matching if no mgra-mgra match
         SELECT
             [person_trip].[scenario_id]
             ,[purpose_tour].[purpose_tour_description]
-            ,CASE	WHEN [person].[age] >= 75 THEN [person].[weight_person]
+            ,CASE	WHEN [person].[age] >= 75 THEN 1
                     WHEN [person].[race] IN ('Some Other Race Alone',
                                                 'Asian Alone',
                                                 'Black or African American Alone',
                                                 'Two or More Major Race Groups',
                                                 'Native Hawaiian and Other Pacific Islander Alone',
                                                 'American Indian and Alaska Native Tribes specified; or American Indian or Alaska Native, not specified and no other races')
-                            OR [person].[hispanic] = 'Hispanic' THEN [person].[weight_person]
-                    WHEN [household].[poverty] <= 2 THEN [person].[weight_person]
+                            OR [person].[hispanic] = 'Hispanic' THEN 1
+                    WHEN [household].[poverty] <= 2 THEN 1
                     ELSE 0 END AS [persons_coc]
-            ,CASE WHEN [person].[age] >= 75 THEN [person].[weight_person] ELSE 0 END AS [persons_senior]
+            ,CASE WHEN [person].[age] >= 75 THEN 1 ELSE 0 END AS [persons_senior]
             ,CASE	WHEN [person].[race] IN ('Some Other Race Alone',
                                              'Asian Alone',
                                              'Black or African American Alone',
                                              'Two or More Major Race Groups',
                                              'Native Hawaiian and Other Pacific Islander Alone',
                                              'American Indian and Alaska Native Tribes specified; or American Indian or Alaska Native, not specified and no other races')
-                        OR [person].[hispanic] = 'Hispanic' THEN [person].[weight_person]
+                        OR [person].[hispanic] = 'Hispanic' THEN 1
                     ELSE 0 END AS [persons_minority]
-            ,CASE WHEN [household].[poverty] <= 2 THEN [person].[weight_person] ELSE 0 END AS [persons_low_income]
-            -- at trips match at skims geographies, no need for aggregation
-            ,[person_trip].[geography_trip_origin_id]
-            ,[person_trip].[geography_trip_destination_id]
+            ,CASE WHEN [household].[poverty] <= 2 THEN 1 ELSE 0 END AS [persons_low_income]
+            ,[geography_trip_origin].[trip_origin_mgra_13]
+            ,[geography_trip_origin].[trip_origin_taz_13]
+            ,[geography_trip_destination].[trip_destination_mgra_13]
+            ,[geography_trip_destination].[trip_destination_taz_13]
             -- all trip modes are directly mapped to assignment modes for
             -- active transportation assignment modes
             ,[mode_trip].[mode_trip_description] AS [assignment_mode]
@@ -1282,6 +1296,14 @@ BEGIN
             [dimension].[mode_trip]
         ON
             [person_trip].[mode_trip_id] = [mode_trip].[mode_trip_id]
+        INNER JOIN
+            [dimension].[geography_trip_origin]
+        ON
+            [person_trip].[geography_trip_origin_id] = [geography_trip_origin].[geography_trip_origin_id]
+        INNER JOIN
+            [dimension].[geography_trip_destination]
+        ON
+            [person_trip].[geography_trip_destination_id] = [geography_trip_destination].[geography_trip_destination_id]
         INNER JOIN
             [dimension].[tour]
         ON
@@ -1308,10 +1330,12 @@ BEGIN
             AND [person].[scenario_id] IN (@scenario_id_base, @scenario_id_build)
                 -- resident trips that use synthetic population
             AND [model_trip].[model_trip_description] IN ('Individual',
-                                                            'Internal-External',
-                                                            'Joint')
+                                                          'Internal-External',
+                                                          'Joint')
             -- active transportation modes only
             AND [mode_trip].[mode_trip_description] IN ('Bike', 'Walk')
+            AND [person].[person_id] > 0  -- remove Not Applicable records
+            AND [household].[household_id] > 0  -- remove Not Applicable records
     ),
     [avg_alternate_trip_time] AS (
         -- calculate average trip time for all trips using alternate scenario skim travel times
@@ -1321,22 +1345,29 @@ BEGIN
                 -- then divide this by total number of base/build trips with alternate scenario travel times
         SELECT
             [at_resident_trips].[scenario_id]
-            ,-- total trip time for trips with alternative skims
-                (SUM([at_resident_trips].[weight_trip] * ISNULL([at_skims].[time_total], 0))
+            ,-- total trip time for trips with alternative skims, substitute taz skim if mgra skim not present
+                (SUM([at_resident_trips].[weight_trip] * ISNULL([at_skims_mgra].[time_total], ISNULL([at_skims_taz].[time_total], 0)))
                 -- divided by number of trips with alternative skims
-                / SUM(CASE	WHEN [at_skims].[time_total] IS NOT NULL
+                / SUM(CASE	WHEN [at_skims_mgra].[time_total] IS NOT NULL
+                              OR [at_skims_taz].[time_total] IS NOT NULL
                             THEN [at_resident_trips].[weight_trip]
                             ELSE 0 END)) AS [time_total_avg]
         FROM
             [at_resident_trips]
         LEFT OUTER JOIN
-            [at_skims]
+            [at_skims_mgra]
         ON
-            [at_resident_trips].[scenario_id] != [at_skims].[scenario_id] -- match base trips with build skims and vice versa
-            -- at trips match at skims geographies, no need for aggregation
-            AND [at_resident_trips].[geography_trip_origin_id] = [at_skims].[geography_trip_origin_id]
-            AND [at_resident_trips].[geography_trip_destination_id] = [at_skims].[geography_trip_destination_id]
-            AND [at_resident_trips].[assignment_mode] = [at_skims].[assignment_mode]
+            [at_resident_trips].[scenario_id] != [at_skims_mgra].[scenario_id] -- match base trips with build skims and vice versa
+            AND [at_resident_trips].[trip_origin_mgra_13] = [at_skims_mgra].[trip_origin_mgra_13]
+            AND [at_resident_trips].[trip_destination_mgra_13] = [at_skims_mgra].[trip_destination_mgra_13]
+            AND [at_resident_trips].[assignment_mode] = [at_skims_mgra].[assignment_mode]
+        LEFT OUTER JOIN
+            [at_skims_taz]
+        ON
+            [at_resident_trips].[scenario_id] != [at_skims_taz].[scenario_id] -- match base trips with build skims and vice versa
+            AND [at_resident_trips].[trip_origin_taz_13] = [at_skims_taz].[trip_origin_taz_13]
+            AND [at_resident_trips].[trip_destination_taz_13] = [at_skims_taz].[trip_destination_taz_13]
+            AND [at_resident_trips].[assignment_mode] = [at_skims_taz].[assignment_mode]
         GROUP BY
             [at_resident_trips].[scenario_id]
     ),
@@ -1356,8 +1387,9 @@ BEGIN
                             THEN @vot_non_commute / 60
                             ELSE NULL END) AS [cost_vot]
             -- person trip value of time cost for trips with alternative skims
+            -- substitute taz skim if mgra skim is not present
             -- substitute average alternative skim time for the trip if no alternative skim is present
-            ,(SUM([at_resident_trips].[weight_person_trip] * ISNULL([at_skims].[time_total], [avg_alternate_trip_time].[time_total_avg]) *
+            ,(SUM([at_resident_trips].[weight_person_trip] * ISNULL([at_skims_mgra].[time_total], ISNULL([at_skims_taz].[time_total], [avg_alternate_trip_time].[time_total_avg])) *
                 CASE	WHEN [at_resident_trips].[purpose_tour_description] = 'Work'
                         THEN @vot_commute / 60
                         WHEN [at_resident_trips].[purpose_tour_description] != 'Work'
@@ -1367,13 +1399,21 @@ BEGIN
         FROM
             [at_resident_trips]
         LEFT OUTER JOIN
-            [at_skims]
+            [at_skims_mgra]
         ON
-            [at_resident_trips].[scenario_id] != [at_skims].[scenario_id] -- match base trips with build skims and vice versa
+            [at_resident_trips].[scenario_id] != [at_skims_mgra].[scenario_id] -- match base trips with build skims and vice versa
             -- at trips match at skims geographies, no need for aggregation
-            AND [at_resident_trips].[geography_trip_origin_id] = [at_skims].[geography_trip_origin_id]
-            AND [at_resident_trips].[geography_trip_destination_id] = [at_skims].[geography_trip_destination_id]
-            AND [at_resident_trips].[assignment_mode] = [at_skims].[assignment_mode]
+            AND [at_resident_trips].[trip_origin_mgra_13] = [at_skims_mgra].[trip_origin_mgra_13]
+            AND [at_resident_trips].[trip_destination_mgra_13] = [at_skims_mgra].[trip_destination_mgra_13]
+            AND [at_resident_trips].[assignment_mode] = [at_skims_mgra].[assignment_mode]
+        LEFT OUTER JOIN
+            [at_skims_taz]
+        ON
+            [at_resident_trips].[scenario_id] != [at_skims_taz].[scenario_id] -- match base trips with build skims and vice versa
+            -- at trips match at skims geographies, no need for aggregation
+            AND [at_resident_trips].[trip_origin_taz_13] = [at_skims_taz].[trip_origin_taz_13]
+            AND [at_resident_trips].[trip_destination_taz_13] = [at_skims_taz].[trip_destination_taz_13]
+            AND [at_resident_trips].[assignment_mode] = [at_skims_taz].[assignment_mode]
         INNER JOIN
             [avg_alternate_trip_time]
         ON
@@ -1677,8 +1717,7 @@ GO
 
 
 -- Create auto resident trips table valued function
-IF  EXISTS (SELECT * FROM sys.objects WHERE object_id = OBJECT_ID(N'[bca].[fn_resident_trips_auto]') AND type in (N'FN', N'IF', N'TF', N'FS', N'FT'))
-DROP FUNCTION [bca].[fn_resident_trips_auto]
+DROP FUNCTION IF EXISTS [bca].[fn_resident_trips_auto]
 GO
 
 CREATE FUNCTION [bca].[fn_resident_trips_auto]
@@ -1725,6 +1764,10 @@ AS
 -- ===========================================================================
 -- Author:		RSG and Gregor Schroeder
 -- Create date: 7/24/2018
+-- Updated: 12/4/2020 for ABM 14.2.1 new trip modes, value of time field
+--   update, new assignment modes, transponder availability, toll cost field rename,
+--   removing household and person weight fields and adding where clause to remove
+--   NA household and person records
 -- Description:	Translation and combination of the bca tool stored procedures
 -- for the new abm database listed below. Given two input scenario_id values,
 -- and input values of time for Work and Non-Work tour purpose trips,
@@ -1747,29 +1790,24 @@ BEGIN
 			[person_trip].[scenario_id]
 			,[geography_trip_origin].[trip_origin_taz_13]
 			,[geography_trip_destination].[trip_destination_taz_13]
-			,CASE	WHEN [mode_trip].[mode_trip_description] = 'Heavy Truck - Non-Toll'
-					THEN 'Heavy Heavy Duty Truck (Non-Toll)'
-					WHEN [mode_trip].[mode_trip_description] = 'Heavy Truck - Toll'
-					THEN 'Heavy Heavy Duty Truck (Toll)'
-					WHEN [mode_trip].[mode_trip_description] = 'Intermediate Truck - Non-Toll'
-					THEN 'Light Heavy Duty Truck (Non-Toll)'
-					WHEN [mode_trip].[mode_trip_description] = 'Intermediate Truck - Toll'
-					THEN 'Light Heavy Duty Truck (Toll)'
-					WHEN [mode_trip].[mode_trip_description] = 'Light Vehicle - Non-Toll'
-					THEN 'Drive Alone Non-Toll'
-					WHEN [mode_trip].[mode_trip_description] = 'Light Vehicle - Toll'
-					THEN 'Drive Alone Toll Eligible'
-					WHEN [mode_trip].[mode_trip_description] = 'Medium Truck - Non-Toll'
-					THEN 'Medium Heavy Duty Truck (Non-Toll)'
-					WHEN [mode_trip].[mode_trip_description] = 'Medium Truck - Toll'
-					THEN 'Medium Heavy Duty Truck (Toll)'
-					WHEN [mode_trip].[mode_trip_description] = 'School Bus'
-					THEN 'Drive Alone Non-Toll' -- School Bus trips use Drive Alone Non-Toll skims
-					WHEN [mode_trip].[mode_trip_description] = 'Taxi'
-					THEN 'Shared Ride 2 Non-Toll' -- Taxi trips use Shared Ride 2 Non-Toll skims
+			-- all trip modes are directly mapped to assignment modes for auto
+            -- excepting the truck modes which are collapsed into Truck
+            -- excepting the Taxi, School Bus, Non-Pooled TNC, and Pooled TNC which all use Shared Ride 3+
+			,CASE WHEN [mode_trip].[mode_trip_description] IN ('Light Heavy Duty Truck',
+                                                               'Medium Heavy Duty Truck',
+                                                               'Heavy Heavy Duty Truck')
+					THEN 'Truck'
+                    WHEN [mode_trip].[mode_trip_description] IN ('Non-Pooled TNC',
+                                                                 'Pooled TNC',
+                                                                 'School Bus',
+                                                                 'Taxi')
+					THEN 'Shared Ride 3+'
 					ELSE [mode_trip].[mode_trip_description]
 					END AS [assignment_mode] -- recode trip modes to assignment modes
-			,[value_of_time_drive_bin_id]
+			,[value_of_time_category_id]
+            ,CASE WHEN [mode_trip].[mode_trip_description] = 'Drive Alone'
+                    THEN [transponder_available_id]
+                    ELSE 0 END AS [transponder_available_id]  -- only drive alone trips use transponder for assignment
 			,[time_trip_start].[trip_start_abm_5_tod]
 			-- use trip weights here instead of person trips weights as this is in line with assignment
 			,SUM(([person_trip].[weight_trip] * [person_trip].[time_total])) / SUM([person_trip].[weight_trip]) AS [time_total]
@@ -1793,55 +1831,35 @@ BEGIN
 			[person_trip].[time_trip_start_id] = [time_trip_start].[time_trip_start_id]
 		WHERE
 			[person_trip].[scenario_id] IN (@scenario_id_base, @scenario_id_build)
-			AND [mode_trip].[mode_trip_description] IN ('Drive Alone Non-Toll',
-														'Drive Alone Toll Eligible',
-														'Heavy Heavy Duty Truck (Non-Toll)',
-														'Heavy Heavy Duty Truck (Toll)',
-														'Heavy Truck - Non-Toll',
-														'Heavy Truck - Toll',
-														'Intermediate Truck - Non-Toll',
-														'Intermediate Truck - Toll',
-														'Light Heavy Duty Truck (Non-Toll)',
-														'Light Heavy Duty Truck (Toll)',
-														'Light Vehicle - Non-Toll',
-														'Light Vehicle - Toll',
-														'Medium Heavy Duty Truck (Non-Toll)',
-														'Medium Heavy Duty Truck (Toll)',
-														'Medium Truck - Non-Toll',
-														'Medium Truck - Toll',
+			AND [mode_trip].[mode_trip_description] IN ('Drive Alone',
+														'Heavy Heavy Duty Truck',
+														'Light Heavy Duty Truck',
+														'Medium Heavy Duty Truck',
+                                                        'Non-Pooled TNC',
+                                                        'Pooled TNC',
 														'School Bus',
-														'Shared Ride 2 Non-Toll',
-														'Shared Ride 2 Toll Eligible',
-														'Shared Ride 3 Non-Toll',
-														'Shared Ride 3 Toll Eligible',
+														'Shared Ride 2',
+														'Shared Ride 3+',
 														'Taxi') -- auto modes
 		GROUP BY
 			[person_trip].[scenario_id]
 			,[geography_trip_origin].[trip_origin_taz_13]
 			,[geography_trip_destination].[trip_destination_taz_13]
-			,CASE	WHEN [mode_trip].[mode_trip_description] = 'Heavy Truck - Non-Toll'
-					THEN 'Heavy Heavy Duty Truck (Non-Toll)'
-					WHEN [mode_trip].[mode_trip_description] = 'Heavy Truck - Toll'
-					THEN 'Heavy Heavy Duty Truck (Toll)'
-					WHEN [mode_trip].[mode_trip_description] = 'Intermediate Truck - Non-Toll'
-					THEN 'Light Heavy Duty Truck (Non-Toll)'
-					WHEN [mode_trip].[mode_trip_description] = 'Intermediate Truck - Toll'
-					THEN 'Light Heavy Duty Truck (Toll)'
-					WHEN [mode_trip].[mode_trip_description] = 'Light Vehicle - Non-Toll'
-					THEN 'Drive Alone Non-Toll'
-					WHEN [mode_trip].[mode_trip_description] = 'Light Vehicle - Toll'
-					THEN 'Drive Alone Toll Eligible'
-					WHEN [mode_trip].[mode_trip_description] = 'Medium Truck - Non-Toll'
-					THEN 'Medium Heavy Duty Truck (Non-Toll)'
-					WHEN [mode_trip].[mode_trip_description] = 'Medium Truck - Toll'
-					THEN 'Medium Heavy Duty Truck (Toll)'
-					WHEN [mode_trip].[mode_trip_description] = 'School Bus'
-					THEN 'Drive Alone Non-Toll' -- School Bus trips use Drive Alone Non-Toll skims
-					WHEN [mode_trip].[mode_trip_description] = 'Taxi'
-					THEN 'Shared Ride 2 Non-Toll' -- Taxi trips use Shared Ride 2 Non-Toll skims
+			,CASE WHEN [mode_trip].[mode_trip_description] IN ('Light Heavy Duty Truck',
+                                                               'Medium Heavy Duty Truck',
+                                                               'Heavy Heavy Duty Truck')
+					THEN 'Truck'
+                    WHEN [mode_trip].[mode_trip_description] IN ('Non-Pooled TNC',
+                                                                 'Pooled TNC',
+                                                                 'School Bus',
+                                                                 'Taxi')
+					THEN 'Shared Ride 3+'
 					ELSE [mode_trip].[mode_trip_description]
 					END
-			,[value_of_time_drive_bin_id]
+			,[value_of_time_category_id]
+            ,CASE WHEN [mode_trip].[mode_trip_description] = 'Drive Alone'
+                    THEN [transponder_available_id]
+                    ELSE 0 END
 			,[time_trip_start].[trip_start_abm_5_tod]
 		HAVING
 			SUM([person_trip].[weight_trip]) > 0
@@ -1856,57 +1874,49 @@ BEGIN
 		SELECT
 			[person_trip].[scenario_id]
 			,[purpose_tour].[purpose_tour_description]
-			,CASE	WHEN [person].[age] >= 75 THEN [person].[weight_person]
+			,CASE	WHEN [person].[age] >= 75 THEN 1
 					WHEN [person].[race] IN ('Some Other Race Alone',
 												'Asian Alone',
 												'Black or African American Alone',
 												'Two or More Major Race Groups',
 												'Native Hawaiian and Other Pacific Islander Alone',
 												'American Indian and Alaska Native Tribes specified; or American Indian or Alaska Native, not specified and no other races')
-							OR [person].[hispanic] = 'Hispanic' THEN [person].[weight_person]
-					WHEN [household].[poverty] <= 2 THEN [person].[weight_person]
+							OR [person].[hispanic] = 'Hispanic' THEN 1
+					WHEN [household].[poverty] <= 2 THEN 1
 					ELSE 0 END AS [persons_coc]
-			,CASE WHEN [person].[age] >= 75 THEN [person].[weight_person] ELSE 0 END AS [persons_senior]
+			,CASE WHEN [person].[age] >= 75 THEN 1 ELSE 0 END AS [persons_senior]
 			,CASE	WHEN [person].[race] IN ('Some Other Race Alone',
 												'Asian Alone',
 												'Black or African American Alone',
 												'Two or More Major Race Groups',
 												'Native Hawaiian and Other Pacific Islander Alone',
 												'American Indian and Alaska Native Tribes specified; or American Indian or Alaska Native, not specified and no other races')
-						OR [person].[hispanic] = 'Hispanic' THEN [person].[weight_person]
+						OR [person].[hispanic] = 'Hispanic' THEN 1
 					ELSE 0 END AS [persons_minority]
-			,CASE WHEN [household].[poverty] <= 2 THEN [person].[weight_person] ELSE 0 END AS [persons_low_income]
+			,CASE WHEN [household].[poverty] <= 2 THEN 1 ELSE 0 END AS [persons_low_income]
 			,[geography_trip_origin].[trip_origin_taz_13]
 			,[geography_trip_destination].[trip_destination_taz_13]
 			-- all trip modes are directly mapped to assignment modes for auto
-			-- excepting all ctm modes, the airport model taxi mode, and the
-			-- individual model school bus mode
-			,CASE	WHEN [mode_trip].[mode_trip_description] = 'Heavy Truck - Non-Toll'
-					THEN 'Heavy Heavy Duty Truck (Non-Toll)'
-					WHEN [mode_trip].[mode_trip_description] = 'Heavy Truck - Toll'
-					THEN 'Heavy Heavy Duty Truck (Toll)'
-					WHEN [mode_trip].[mode_trip_description] = 'Intermediate Truck - Non-Toll'
-					THEN 'Light Heavy Duty Truck (Non-Toll)'
-					WHEN [mode_trip].[mode_trip_description] = 'Intermediate Truck - Toll'
-					THEN 'Light Heavy Duty Truck (Toll)'
-					WHEN [mode_trip].[mode_trip_description] = 'Light Vehicle - Non-Toll'
-					THEN 'Drive Alone Non-Toll'
-					WHEN [mode_trip].[mode_trip_description] = 'Light Vehicle - Toll'
-					THEN 'Drive Alone Toll Eligible'
-					WHEN [mode_trip].[mode_trip_description] = 'Medium Truck - Non-Toll'
-					THEN 'Medium Heavy Duty Truck (Non-Toll)'
-					WHEN [mode_trip].[mode_trip_description] = 'Medium Truck - Toll'
-					THEN 'Medium Heavy Duty Truck (Toll)'
-					WHEN [mode_trip].[mode_trip_description] = 'School Bus'
-					THEN 'Drive Alone Non-Toll' -- School Bus trips use Drive Alone Non-Toll skims
-					WHEN [mode_trip].[mode_trip_description] = 'Taxi'
-					THEN 'Shared Ride 2 Non-Toll' -- Taxi trips use Shared Ride 2 Non-Toll skims
+            -- excepting the truck modes which are collapsed into Truck
+            -- excepting the Taxi, School Bus, Non-Pooled TNC, and Pooled TNC which all use Shared Ride 3+
+			,CASE WHEN [mode_trip].[mode_trip_description] IN ('Light Heavy Duty Truck',
+                                                                'Medium Heavy Duty Truck',
+                                                                'Heavy Heavy Duty Truck')
+					THEN 'Truck'
+                    WHEN [mode_trip].[mode_trip_description] IN ('Non-Pooled TNC',
+                                                                    'Pooled TNC',
+                                                                    'School Bus',
+                                                                    'Taxi')
+					THEN 'Shared Ride 3+'
 					ELSE [mode_trip].[mode_trip_description]
 					END AS [assignment_mode] -- recode trip modes to assignment modes
-			,[value_of_time_drive_bin_id]
+			,[value_of_time_category_id]
+            ,CASE WHEN [mode_trip].[mode_trip_description] = 'Drive Alone'
+                    THEN [transponder_available_id]
+                    ELSE 0 END AS [transponder_available_id]  -- only drive alone trips use transponder for assignment
 			,[time_trip_start].[trip_start_abm_5_tod]
 			,[person_trip].[time_total]
-			,[person_trip].[toll_cost_drive]
+			,[person_trip].[cost_toll_drive]
 			,[person_trip].[weight_trip]
 			,[person_trip].[weight_person_trip]
 		FROM
@@ -1957,31 +1967,18 @@ BEGIN
 			AND [person].[scenario_id] IN (@scenario_id_base, @scenario_id_build)
 			-- resident trips that use synthetic population
 			AND [model_trip].[model_trip_description] IN ('Individual',
-															'Internal-External',
-															'Joint')
-			-- auto modes only
-			AND [mode_trip].[mode_trip_description] IN ('Drive Alone Non-Toll',
-														'Drive Alone Toll Eligible',
-														'Heavy Heavy Duty Truck (Non-Toll)',
-														'Heavy Heavy Duty Truck (Toll)',
-														'Heavy Truck - Non-Toll',
-														'Heavy Truck - Toll',
-														'Intermediate Truck - Non-Toll',
-														'Intermediate Truck - Toll',
-														'Light Heavy Duty Truck (Non-Toll)',
-														'Light Heavy Duty Truck (Toll)',
-														'Light Vehicle - Non-Toll',
-														'Light Vehicle - Toll',
-														'Medium Heavy Duty Truck (Non-Toll)',
-														'Medium Heavy Duty Truck (Toll)',
-														'Medium Truck - Non-Toll',
-														'Medium Truck - Toll',
+														  'Internal-External',
+														  'Joint')
+			AND [mode_trip].[mode_trip_description] IN ('Drive Alone',
+														'Heavy Heavy Duty Truck',
+														'Light Heavy Duty Truck',
+														'Medium Heavy Duty Truck',
+                                                        'Non-Pooled TNC',
+                                                        'Pooled TNC',
 														'School Bus',
-														'Shared Ride 2 Non-Toll',
-														'Shared Ride 2 Toll Eligible',
-														'Shared Ride 3 Non-Toll',
-														'Shared Ride 3 Toll Eligible',
-														'Taxi')
+														'Shared Ride 2',
+														'Shared Ride 3+',
+														'Taxi') -- auto modes
 	),
 	[avg_alternate_trip_time] AS (
 		-- calculate average trip time for all trips using alternate scenario skim travel times
@@ -2007,7 +2004,8 @@ BEGIN
 			AND [auto_resident_trips].[trip_origin_taz_13] = [auto_skims].[trip_origin_taz_13]
 			AND [auto_resident_trips].[trip_destination_taz_13] = [auto_skims].[trip_destination_taz_13]
 			AND [auto_resident_trips].[assignment_mode] = [auto_skims].[assignment_mode]
-			AND [auto_resident_trips].[value_of_time_drive_bin_id] = [auto_skims].[value_of_time_drive_bin_id]
+			AND [auto_resident_trips].[value_of_time_category_id] = [auto_skims].[value_of_time_category_id]
+            AND [auto_resident_trips].[transponder_available_id] = [auto_skims].[transponder_available_id]
 			AND [auto_resident_trips].[trip_start_abm_5_tod] = [auto_skims].[trip_start_abm_5_tod]
 		GROUP BY
 			[auto_resident_trips].[scenario_id]
@@ -2021,7 +2019,7 @@ BEGIN
 			,[auto_resident_trips].[persons_minority]
 			,[auto_resident_trips].[persons_low_income]
 			 -- split toll cost within scenarios amongst all trip participants
-			,SUM(([auto_resident_trips].[weight_trip] * [auto_resident_trips].[toll_cost_drive]) / [auto_resident_trips].[weight_person_trip]) AS [cost_toll]
+			,SUM(([auto_resident_trips].[weight_trip] * [auto_resident_trips].[cost_toll_drive]) / [auto_resident_trips].[weight_person_trip]) AS [cost_toll]
 			-- trip value of time cost for person trips with their own skims
 			,SUM([auto_resident_trips].[weight_person_trip] * [auto_resident_trips].[time_total] *
 					CASE	WHEN [auto_resident_trips].[purpose_tour_description] = 'Work'
@@ -2048,7 +2046,8 @@ BEGIN
 			AND [auto_resident_trips].[trip_origin_taz_13] = [auto_skims].[trip_origin_taz_13]
 			AND [auto_resident_trips].[trip_destination_taz_13] = [auto_skims].[trip_destination_taz_13]
 			AND [auto_resident_trips].[assignment_mode] = [auto_skims].[assignment_mode]
-			AND [auto_resident_trips].[value_of_time_drive_bin_id] = [auto_skims].[value_of_time_drive_bin_id]
+			AND [auto_resident_trips].[value_of_time_category_id] = [auto_skims].[value_of_time_category_id]
+            AND [auto_resident_trips].[transponder_available_id] = [auto_skims].[transponder_available_id]
 			AND [auto_resident_trips].[trip_start_abm_5_tod] = [auto_skims].[trip_start_abm_5_tod]
 		INNER JOIN
 			[avg_alternate_trip_time]
@@ -2405,8 +2404,7 @@ GO
 
 
 -- Create transit resident trips table valued function
-IF  EXISTS (SELECT * FROM sys.objects WHERE object_id = OBJECT_ID(N'[bca].[fn_resident_trips_transit]') AND type in (N'FN', N'IF', N'TF', N'FS', N'FT'))
-DROP FUNCTION [bca].[fn_resident_trips_transit]
+DROP FUNCTION IF EXISTS [bca].[fn_resident_trips_transit]
 GO
 
 CREATE FUNCTION [bca].[fn_resident_trips_transit]
@@ -2453,6 +2451,9 @@ AS
 -- ===========================================================================
 -- Author:		RSG and Gregor Schroeder
 -- Create date: 7/24/2018
+-- Updated: 12/4/2020 for ABM 14.2.1 new trip modes, new modes, transit fare
+--   cost field rename, removing household and person weight fields and adding
+--   where clause to remove NA household and person records
 -- Description:	Translation and combination of the bca tool stored procedures
 -- for the new abm database listed below. Given two input scenario_id values,
 -- input values of time for Work and Non-Work tour purpose trips, and an input
@@ -2479,26 +2480,26 @@ BEGIN
 		SELECT
 			[person_trip].[scenario_id]
 			,[purpose_tour].[purpose_tour_description]
-			,CASE	WHEN [person].[age] >= 75 THEN [person].[weight_person]
+			,CASE	WHEN [person].[age] >= 75 THEN 1
 					WHEN [person].[race] IN ('Some Other Race Alone',
 												'Asian Alone',
 												'Black or African American Alone',
 												'Two or More Major Race Groups',
 												'Native Hawaiian and Other Pacific Islander Alone',
 												'American Indian and Alaska Native Tribes specified; or American Indian or Alaska Native, not specified and no other races')
-							OR [person].[hispanic] = 'Hispanic' THEN [person].[weight_person]
-					WHEN [household].[poverty] <= 2 THEN [person].[weight_person]
+							OR [person].[hispanic] = 'Hispanic' THEN 1
+					WHEN [household].[poverty] <= 2 THEN 1
 					ELSE 0 END AS [persons_coc]
-			,CASE WHEN [person].[age] >= 75 THEN [person].[weight_person] ELSE 0 END AS [persons_senior]
+			,CASE WHEN [person].[age] >= 75 THEN 1 ELSE 0 END AS [persons_senior]
 			,CASE	WHEN [person].[race] IN ('Some Other Race Alone',
 												'Asian Alone',
 												'Black or African American Alone',
 												'Two or More Major Race Groups',
 												'Native Hawaiian and Other Pacific Islander Alone',
 												'American Indian and Alaska Native Tribes specified; or American Indian or Alaska Native, not specified and no other races')
-						OR [person].[hispanic] = 'Hispanic' THEN [person].[weight_person]
+						OR [person].[hispanic] = 'Hispanic' THEN 1
 					ELSE 0 END AS [persons_minority]
-			,CASE WHEN [household].[poverty] <= 2 THEN [person].[weight_person] ELSE 0 END AS [persons_low_income]
+			,CASE WHEN [household].[poverty] <= 2 THEN 1 ELSE 0 END AS [persons_low_income]
 			-- at trips match at skims geographies, no need for aggregation
 			,[person_trip].[geography_trip_origin_id]
 			,[person_trip].[geography_trip_destination_id]
@@ -2506,9 +2507,15 @@ BEGIN
 			-- for build trips with no base skims using auto skims
 			,[geography_trip_origin].[trip_origin_taz_13]
 			,[geography_trip_destination].[trip_destination_taz_13]
-			-- all trip modes are directly mapped to assignment modes for
-			-- transit assignment modes
-			,[mode_trip].[mode_trip_description] AS [assignment_mode]
+			-- all trip modes are directly mapped to assignment modes
+			-- excepting TNC to Transit is treated exactly like Kiss and Ride to Transit
+			,CASE WHEN [mode_trip].[mode_trip_description] = 'TNC to Transit - Local Bus and Premium Transit'
+                  THEN 'Kiss and Ride to Transit - Local Bus and Premium Transit'
+                  WHEN [mode_trip].[mode_trip_description] = 'TNC to Transit - Local Bus'
+                  THEN 'Kiss and Ride to Transit - Local Bus'
+                  WHEN [mode_trip].[mode_trip_description] = 'TNC to Transit - Premium Transit'
+                  THEN 'Kiss and Ride to Transit - Premium Transit'
+                  ELSE [mode_trip].[mode_trip_description] END AS [assignment_mode]
 			,[time_trip_start].[trip_start_abm_5_tod]
 			-- include transit in vehicle time
 			,[person_trip].[time_transit_in_vehicle]
@@ -2519,7 +2526,7 @@ BEGIN
 			,[person_trip].[time_total]
 			,[person_trip].[weight_trip]
 			,[person_trip].[weight_person_trip]
-			,[person_trip].[cost_transit]
+			,[person_trip].[cost_fare_transit]
 		FROM
 			[fact].[person_trip]
 		INNER JOIN
@@ -2568,18 +2575,21 @@ BEGIN
 			AND [person].[scenario_id] IN (@scenario_id_base, @scenario_id_build)
 			-- resident trips that use synthetic population
 			AND [model_trip].[model_trip_description] IN ('Individual',
-															'Internal-External',
-															'Joint')
+														  'Internal-External',
+														  'Joint')
 			-- transit modes only
 			AND [mode_trip].[mode_trip_description] IN ('Kiss and Ride to Transit - Local Bus and Premium Transit',
-														'Kiss and Ride to Transit - Local Bus Only',
-														'Kiss and Ride to Transit - Premium Transit Only',
+														'Kiss and Ride to Transit - Local Bus',
+														'Kiss and Ride to Transit - Premium Transit',
 														'Park and Ride to Transit - Local Bus and Premium Transit',
-														'Park and Ride to Transit - Local Bus Only',
-														'Park and Ride to Transit - Premium Transit Only',
+														'Park and Ride to Transit - Local Bus',
+														'Park and Ride to Transit - Premium Transit',
+                                                        'TNC to Transit - Local Bus and Premium Transit',
+														'TNC to Transit - Local Bus',
+														'TNC to Transit - Premium Transit',
 														'Walk to Transit - Local Bus and Premium Transit',
-														'Walk to Transit - Local Bus Only',
-														'Walk to Transit - Premium Transit Only')
+														'Walk to Transit - Local Bus',
+														'Walk to Transit - Premium Transit')
 	),
 	[transit_skims] AS (
 		-- create base and build scenario transit skims from person trips table
@@ -2592,9 +2602,15 @@ BEGIN
 			-- transit trips match at skims geographies, no need for aggregation
 			,[person_trip].[geography_trip_origin_id]
 			,[person_trip].[geography_trip_destination_id]
-			-- all trip modes are directly mapped to assignment modes for
-			-- transit assignment modes
-			,[mode_trip].[mode_trip_description] AS [assignment_mode]
+			-- all trip modes are directly mapped to assignment modes
+			-- excepting TNC to Transit is treated exactly like Kiss and Ride to Transit
+			,CASE WHEN [mode_trip].[mode_trip_description] = 'TNC to Transit - Local Bus and Premium Transit'
+                  THEN 'Kiss and Ride to Transit - Local Bus and Premium Transit'
+                  WHEN [mode_trip].[mode_trip_description] = 'TNC to Transit - Local Bus'
+                  THEN 'Kiss and Ride to Transit - Local Bus'
+                  WHEN [mode_trip].[mode_trip_description] = 'TNC to Transit - Premium Transit'
+                  THEN 'Kiss and Ride to Transit - Premium Transit'
+                  ELSE [mode_trip].[mode_trip_description] END AS [assignment_mode]
 			,[time_trip_start].[trip_start_abm_5_tod]
 			-- include transit in vehicle time
 			-- use trip weights here instead of person trips weights as this is in line with assignment
@@ -2623,19 +2639,28 @@ BEGIN
 			[person_trip].[scenario_id] IN (@scenario_id_base, @scenario_id_build)
 			-- active transportation modes only
 			AND [mode_trip].[mode_trip_description] IN ('Kiss and Ride to Transit - Local Bus and Premium Transit',
-														'Kiss and Ride to Transit - Local Bus Only',
-														'Kiss and Ride to Transit - Premium Transit Only',
+														'Kiss and Ride to Transit - Local Bus',
+														'Kiss and Ride to Transit - Premium Transit',
 														'Park and Ride to Transit - Local Bus and Premium Transit',
-														'Park and Ride to Transit - Local Bus Only',
-														'Park and Ride to Transit - Premium Transit Only',
+														'Park and Ride to Transit - Local Bus',
+														'Park and Ride to Transit - Premium Transit',
+                                                        'TNC to Transit - Local Bus and Premium Transit',
+														'TNC to Transit - Local Bus',
+														'TNC to Transit - Premium Transit',
 														'Walk to Transit - Local Bus and Premium Transit',
-														'Walk to Transit - Local Bus Only',
-														'Walk to Transit - Premium Transit Only')
+														'Walk to Transit - Local Bus',
+														'Walk to Transit - Premium Transit')
 		GROUP BY
 			[person_trip].[scenario_id]
 			,[person_trip].[geography_trip_origin_id]
 			,[person_trip].[geography_trip_destination_id]
-			,[mode_trip].[mode_trip_description]
+			,CASE WHEN [mode_trip].[mode_trip_description] = 'TNC to Transit - Local Bus and Premium Transit'
+                  THEN 'Kiss and Ride to Transit - Local Bus and Premium Transit'
+                  WHEN [mode_trip].[mode_trip_description] = 'TNC to Transit - Local Bus'
+                  THEN 'Kiss and Ride to Transit - Local Bus'
+                  WHEN [mode_trip].[mode_trip_description] = 'TNC to Transit - Premium Transit'
+                  THEN 'Kiss and Ride to Transit - Premium Transit'
+                  ELSE [mode_trip].[mode_trip_description] END
 			,[time_trip_start].[trip_start_abm_5_tod]
 		HAVING
 			SUM([person_trip].[weight_trip]) > 0
@@ -2681,29 +2706,16 @@ BEGIN
 			[person_trip].[geography_trip_destination_id] = [geography_trip_destination].[geography_trip_destination_id]
 		WHERE
 			[person_trip].[scenario_id] = @scenario_id_base
-			-- all auto trip modes
-			AND [mode_trip].[mode_trip_description] IN ('Drive Alone Non-Toll',
-														'Drive Alone Toll Eligible',
-														'Heavy Heavy Duty Truck (Non-Toll)',
-														'Heavy Heavy Duty Truck (Toll)',
-														'Heavy Truck - Non-Toll',
-														'Heavy Truck - Toll',
-														'Intermediate Truck - Non-Toll',
-														'Intermediate Truck - Toll',
-														'Light Heavy Duty Truck (Non-Toll)',
-														'Light Heavy Duty Truck (Toll)',
-														'Light Vehicle - Non-Toll',
-														'Light Vehicle - Toll',
-														'Medium Heavy Duty Truck (Non-Toll)',
-														'Medium Heavy Duty Truck (Toll)',
-														'Medium Truck - Non-Toll',
-														'Medium Truck - Toll',
-														'School Bus', -- uses Drive Alone Non-Toll
-														'Shared Ride 2 Non-Toll',
-														'Shared Ride 2 Toll Eligible',
-														'Shared Ride 3 Non-Toll',
-														'Shared Ride 3 Toll Eligible',
-														'Taxi') -- uses Shared Ride 2 Non-Toll
+			AND [mode_trip].[mode_trip_description] IN ('Drive Alone',
+														'Heavy Heavy Duty Truck',
+														'Light Heavy Duty Truck',
+														'Medium Heavy Duty Truck',
+                                                        'Non-Pooled TNC',
+                                                        'Pooled TNC',
+														'School Bus',
+														'Shared Ride 2',
+														'Shared Ride 3+',
+														'Taxi') -- auto modes
 		GROUP BY
 			[person_trip].[scenario_id]
 			,[geography_trip_origin].[trip_origin_taz_13]
@@ -2733,11 +2745,11 @@ BEGIN
 					AND ([transit_skims].[time_transit_out_vehicle] IS NULL OR [transit_skims].[time_transit_in_vehicle] IS NULL)
 					AND [estimated_base_transit_skims].[estimated_drive_transit_time_total] IS NOT NULL
 					AND [transit_resident_trips].[assignment_mode] IN ('Kiss and Ride to Transit - Local Bus and Premium Transit',
-																		'Kiss and Ride to Transit - Local Bus Only',
-																		'Kiss and Ride to Transit - Premium Transit Only',
-																		'Park and Ride to Transit - Local Bus and Premium Transit',
-																		'Park and Ride to Transit - Local Bus Only',
-																		'Park and Ride to Transit - Premium Transit Only')
+																	   'Kiss and Ride to Transit - Local Bus',
+																	   'Kiss and Ride to Transit - Premium Transit',
+																	   'Park and Ride to Transit - Local Bus and Premium Transit',
+																	   'Park and Ride to Transit - Local Bus',
+																	   'Park and Ride to Transit - Premium Transit')
 				THEN [transit_resident_trips].[weight_trip]
 						* [estimated_base_transit_skims].[estimated_drive_transit_time_total]
 				-- the build scenario travel time using estimated alternate scenario skim values
@@ -2748,8 +2760,8 @@ BEGIN
 					AND ([transit_skims].[time_transit_out_vehicle] IS NULL OR [transit_skims].[time_transit_in_vehicle] IS NULL)
 					AND [estimated_base_transit_skims].[estimated_walk_transit_time_total] IS NOT NULL
 					AND [transit_resident_trips].[assignment_mode] IN ('Walk to Transit - Local Bus and Premium Transit',
-																		'Walk to Transit - Local Bus Only',
-																		'Walk to Transit - Premium Transit Only')
+																	   'Walk to Transit - Local Bus',
+																	   'Walk to Transit - Premium Transit')
 				THEN [transit_resident_trips].[weight_trip]
 						* [estimated_base_transit_skims].[estimated_walk_transit_time_total]
 				ELSE NULL
@@ -2820,11 +2832,11 @@ BEGIN
 						AND ([transit_skims].[time_transit_out_vehicle] IS NULL OR [transit_skims].[time_transit_in_vehicle] IS NULL)
 						AND [estimated_base_transit_skims].[estimated_drive_transit_time_total] IS NOT NULL
 						AND [transit_resident_trips].[assignment_mode] IN ('Kiss and Ride to Transit - Local Bus and Premium Transit',
-																			'Kiss and Ride to Transit - Local Bus Only',
-																			'Kiss and Ride to Transit - Premium Transit Only',
-																			'Park and Ride to Transit - Local Bus and Premium Transit',
-																			'Park and Ride to Transit - Local Bus Only',
-																			'Park and Ride to Transit - Premium Transit Only')
+																		   'Kiss and Ride to Transit - Local Bus',
+																		   'Kiss and Ride to Transit - Premium Transit',
+																		   'Park and Ride to Transit - Local Bus and Premium Transit',
+																		   'Park and Ride to Transit - Local Bus',
+																		   'Park and Ride to Transit - Premium Transit')
 					THEN [transit_resident_trips].[weight_person_trip]
 							* [estimated_base_transit_skims].[estimated_drive_transit_time_total]
 							* CASE	WHEN [transit_resident_trips].[purpose_tour_description] = 'Work'
@@ -2840,8 +2852,8 @@ BEGIN
 						AND ([transit_skims].[time_transit_out_vehicle] IS NULL OR [transit_skims].[time_transit_in_vehicle] IS NULL)
 						AND [estimated_base_transit_skims].[estimated_walk_transit_time_total] IS NOT NULL
 						AND [transit_resident_trips].[assignment_mode] IN ('Walk to Transit - Local Bus and Premium Transit',
-																			'Walk to Transit - Local Bus Only',
-																			'Walk to Transit - Premium Transit Only')
+																		   'Walk to Transit - Local Bus',
+																		   'Walk to Transit - Premium Transit')
 					THEN [transit_resident_trips].[weight_person_trip]
 							* [estimated_base_transit_skims].[estimated_walk_transit_time_total]
 							* CASE	WHEN [transit_resident_trips].[purpose_tour_description] = 'Work'
@@ -2859,7 +2871,7 @@ BEGIN
 					END) AS [alternate_cost_vot]
 				,SUM([transit_resident_trips].[weight_person_trip]) AS [person_trips]
 				-- transit costs are shared by all participants
-				,SUM([transit_resident_trips].[weight_person_trip] * [transit_resident_trips].[cost_transit]) AS [cost_transit]
+				,SUM([transit_resident_trips].[weight_person_trip] * [transit_resident_trips].[cost_fare_transit]) AS [cost_transit]
 		FROM
 			[transit_resident_trips]
 		LEFT OUTER JOIN
@@ -3231,8 +3243,7 @@ GO
 
 
 -- Create stored procedure to load emfac emissions output xlsx files
-IF  EXISTS (SELECT * FROM sys.objects WHERE object_id = OBJECT_ID(N'[bca].[sp_load_emfac_output]') AND type in (N'P', N'PC'))
-DROP PROCEDURE [bca].[sp_load_emfac_output]
+DROP PROCEDURE IF EXISTS [bca].[sp_load_emfac_output]
 GO
 
 CREATE PROCEDURE [bca].[sp_load_emfac_output]
@@ -3255,7 +3266,6 @@ AS
 		into the [bca].[emfac_output] table.
 		*/
 
--- TODO having issues with socioeca8, works on abm_13_2_3
 -- in order to run OPENROWSET or OPENDATASOURCE the server must allow Ad Hoc Distriuted Queries
 --https://docs.microsoft.com/en-us/sql/database-engine/configure-windows/ad-hoc-distributed-queries-server-configuration-option?view=sql-server-2017
 --sp_configure 'show advanced options', 1;
@@ -3375,8 +3385,7 @@ GO
 
 
 -- Create stored procedure for resident telecommuters
-IF  EXISTS (SELECT * FROM sys.objects WHERE [object_id] = OBJECT_ID(N'[bca].[sp_resident_telecommute_benefits]') AND [type] = 'P')
-DROP PROCEDURE [bca].[sp_resident_telecommute_benefits]
+DROP PROCEDURE IF EXISTS [bca].[sp_resident_telecommute_benefits]
 GO
 
 CREATE PROCEDURE [bca].[sp_resident_telecommute_benefits]
@@ -3387,6 +3396,8 @@ AS
 -- ===========================================================================
 -- Author:		Gregor Schroeder
 -- Create date: 9/25/2018
+-- Updated: 12/4/2020 for ABM 14.2.1 removing household and person weight
+--   fields and adding where clause to remove NA household and person records
 -- Description:	Given two input scenario_id values and an input value of time
 -- for Work purpose trips, returns value of time benefit of non-taken work
 -- work tours for telecommuters. Non-taken work tour travel times for
@@ -3476,26 +3487,26 @@ FROM (
 	SELECT
 		[person].[scenario_id]
 		,[geography_household_location].[household_location_taz_13]
-		,SUM(CASE	WHEN [person].[age] >= 75 THEN [person].[weight_person]
+		,SUM(CASE	WHEN [person].[age] >= 75 THEN 1
 					WHEN [person].[race] IN ('Some Other Race Alone',
 												'Asian Alone',
 												'Black or African American Alone',
 												'Two or More Major Race Groups',
 												'Native Hawaiian and Other Pacific Islander Alone',
 												'American Indian and Alaska Native Tribes specified; or American Indian or Alaska Native, not specified and no other races')
-							OR [person].[hispanic] = 'Hispanic' THEN [person].[weight_person]
-					WHEN [household].[poverty] <= 2 THEN [person].[weight_person] ELSE 0 END) AS [persons_coc]
-		,SUM(CASE WHEN [person].[age] >= 75 THEN [person].[weight_person] ELSE 0 END) AS [persons_senior]
+							OR [person].[hispanic] = 'Hispanic' THEN 1
+					WHEN [household].[poverty] <= 2 THEN 1 ELSE 0 END) AS [persons_coc]
+		,SUM(CASE WHEN [person].[age] >= 75 THEN 1 ELSE 0 END) AS [persons_senior]
 		,SUM(CASE	WHEN [person].[race] IN ('Some Other Race Alone',
 												'Asian Alone',
 												'Black or African American Alone',
 												'Two or More Major Race Groups',
 												'Native Hawaiian and Other Pacific Islander Alone',
 												'American Indian and Alaska Native Tribes specified; or American Indian or Alaska Native, not specified and no other races')
-						OR [person].[hispanic] = 'Hispanic' THEN [person].[weight_person]
+						OR [person].[hispanic] = 'Hispanic' THEN 1
 					ELSE 0 END) AS [persons_minority]
-		,SUM(CASE WHEN [household].[poverty] <= 2 THEN [person].[weight_person] ELSE 0 END) AS [persons_low_income]
-		,SUM([weight_person]) AS [persons]
+		,SUM(CASE WHEN [household].[poverty] <= 2 THEN 1 ELSE 0 END) AS [persons_low_income]
+		,COUNT([person_id]) AS [persons]
 	FROM
 		[dimension].[person]
 	INNER JOIN
@@ -3510,8 +3521,8 @@ FROM (
 	WHERE
 		[person].[scenario_id] IN (@scenario_id_base, @scenario_id_build)
 		AND [household].[scenario_id] IN (@scenario_id_base, @scenario_id_build)
-		AND [person].[work_segment] = 'Work from Home'
-		AND [person].[weight_person] > 0
+		AND [person].[work_segment] = 'Work from Home'  -- full-time telecommuters only, no partial telecommuters
+		AND [person].[person_id] > 0  -- remove Not Applicable records
 	GROUP BY
 		[person].[scenario_id]
 		,[geography_household_location].[household_location_taz_13]) AS [telecommute_persons]

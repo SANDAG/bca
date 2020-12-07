@@ -27,6 +27,12 @@ GO
 -- in the abm database
 -- removes dependency of bca tool on the abm database name
 -- dependency on abm database structure remains
+IF OBJECT_ID('dimension.geography_household_location', 'sn') IS NOT NULL
+	DROP SYNONYM [dimension].[geography_household_location]
+GO
+CREATE SYNONYM [dimension].[geography_household_location] FOR $(abm_db_name).[dimension].[geography_household_location]
+GO
+
 IF OBJECT_ID('dimension.geography_trip_destination', 'sn') IS NOT NULL
 	DROP SYNONYM [dimension].[geography_trip_destination]
 GO
@@ -62,7 +68,6 @@ IF OBJECT_ID('fact.hwy_flow', 'sn') IS NOT NULL
 GO
 CREATE SYNONYM [fact].[hwy_flow] FOR $(abm_db_name).[fact].[hwy_flow]
 GO
-
 
 IF OBJECT_ID('fact.hwy_flow_mode', 'sn') IS NOT NULL
 	DROP SYNONYM [fact].[hwy_flow_mode]
@@ -124,8 +129,14 @@ GO
 CREATE SYNONYM [dimension].[purpose_tour] FOR $(abm_db_name).[dimension].[purpose_tour]
 GO
 
-IF OBJECT_ID('dimension.value_of_time_drive_bin', 'sn') IS NOT NULL
-	DROP SYNONYM [dimension].[value_of_time_drive_bin]
+IF OBJECT_ID('dimension.purpose_trip_destination', 'sn') IS NOT NULL
+	DROP SYNONYM [dimension].[purpose_trip_destination]
 GO
-CREATE SYNONYM [dimension].[value_of_time_drive_bin] FOR $(abm_db_name).[dimension].[value_of_time_drive_bin]
+CREATE SYNONYM [dimension].[purpose_trip_destination] FOR $(abm_db_name).[dimension].[purpose_trip_destination]
+GO
+
+IF OBJECT_ID('dimension.purpose_trip_origin', 'sn') IS NOT NULL
+	DROP SYNONYM [dimension].[purpose_trip_origin]
+GO
+CREATE SYNONYM [dimension].[purpose_trip_origin] FOR $(abm_db_name).[dimension].[purpose_trip_origin]
 GO
