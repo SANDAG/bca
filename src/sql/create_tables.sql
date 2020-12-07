@@ -1,6 +1,3 @@
-USE [bca]
-GO
-
 -- Create analysis definition table
 CREATE TABLE [bca].[analysis] (
 	[analysis_id] integer IDENTITY(1,1) NOT NULL
