@@ -56,7 +56,7 @@ CREATE TABLE [bca].[analysis_parameters] (
 	,[crash_pdo_cost] float NULL
 	,[co2_value] float NULL
 	,[pm2_5_value] float NULL
-	,[pm10_value] float NULL
+	--,[pm10_value] float NULL
 	,[nox_value] float NULL
 	,[rog_value] float NULL
 	,[so2_value] float NULL
@@ -64,12 +64,16 @@ CREATE TABLE [bca].[analysis_parameters] (
 	,[pm_10_value] float NULL
 	,[inflation_rate] float NULL
     ,[discount_rate] float NULL
-	--,[coc_age_thresh] integer NULL
-	--,[coc_race_thresh] integer NULL
-	--,[coc_hinc_thresh] integer NULL
-	--,[coc_poverty_thresh] float NULL
-	--,[coc_hisp_thresh] integer NULL
+	,[coc_age_thresh] integer NULL
+	,[coc_race_thresh] integer NULL
+	,[coc_hinc_thresh] integer NULL
+	,[coc_poverty_thresh] float NULL
+	,[coc_hisp_thresh] integer NULL
 	,[rel_ratio] float NULL
+	,[bike_vot_recreational] [float] NULL
+	,[bike_vot_non_recreational] [float] NULL
+	,[walk_vot_recreational] [float] NULL
+	,[walk_vot_non_recreational] [float] NULL
     ,CONSTRAINT [pk_analysis_parameters] PRIMARY KEY ([id])
     ,CONSTRAINT [fk_analysis_parameters_analysis] FOREIGN KEY ([analysis_id]) REFERENCES [bca].[analysis] ON UPDATE CASCADE ON DELETE CASCADE
     ,CONSTRAINT [uq_analysis_parameters] UNIQUE NONCLUSTERED ([analysis_id], [comparison_year])
@@ -276,6 +280,20 @@ CREATE TABLE [bca].[scenario_comparison] (
     ,[persons_coc_poverty] integer NULL
     ,[base_rel_cost] float NULL
     ,[build_rel_cost] float NULL
+	,[base_vot_bike] [float] NULL
+	,[build_vot_bike] [float] NULL
+	,[benefit_bike] [float] NULL
+	,[benefit_bike_coc] [float] NULL
+	,[benefit_bike_senior] [float] NULL
+	,[benefit_bike_minority] [float] NULL
+	,[benefit_bike_low_income] [float] NULL
+	,[base_vot_walk] [float] NULL
+	,[build_vot_walk] [float] NULL
+	,[benefit_walk] [float] NULL
+	,[benefit_walk_coc] [float] NULL
+	,[benefit_walk_senior] [float] NULL
+	,[benefit_walk_minority] [float] NULL
+	,[benefit_walk_low_income] [float] NULL
     ,CONSTRAINT [pk_scenario_comparison] PRIMARY KEY ([id])
     ,CONSTRAINT [uq_scenario_comparison] UNIQUE NONCLUSTERED ([analysis_id], [scenario_year])
 )
