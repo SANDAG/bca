@@ -4,71 +4,86 @@ CREATE PROCEDURE [bca].[sp_run_multiyear_processor] @analysis_id INT
 AS
 SET NOCOUNT ON;
 
-DECLARE @year_start INT,
-	@year_intermediate_1 INT,
-	@year_intermediate_2 FLOAT,
-	@year_intermediate_3 FLOAT,
-	@year_intermediate_4 FLOAT,
-	@year_intermediate_5 INT,
-	@year_end INT,
-	@year_reference INT,
-	@rate_discount FLOAT,
-	@annualization_factor FLOAT,
-	@current_year INT,
-	@current_iteration INT = 0,
-	@count_scenario_comparison INT = 0,
-	@max_scenario_comparison_year INT = 0;
+DECLARE 
+	@year_start						integer
+	,@year_present					integer
+	,@year_intermediate_1			integer
+	,@year_intermediate_2			float
+	,@year_intermediate_3			float
+	,@year_intermediate_4			float
+	,@year_intermediate_5			integer
+	,@year_end						integer
+	,@year_reference				integer
+	,@rate_discount					float
+	,@annualization_factor			float
+	,@current_year					integer
+	,@current_iteration				integer		= 0
+	,@count_scenario_comparison		integer		= 0
+	,@max_scenario_comparison_year	integer		= 0;
 
 --read analysis fields
-SELECT @year_start = year_start,
-	@year_intermediate_1 = year_intermediate_1,
-	@year_intermediate_2 = year_intermediate_2,
-	@year_intermediate_3 = year_intermediate_3,
-	@year_intermediate_4 = year_intermediate_4,
-	@year_intermediate_5 = year_intermediate_5,
-	@year_end = year_end,
-	@year_reference = year_reference,
-	@rate_discount = discount_rate,
-	@annualization_factor = annualization_factor
+SELECT 
+	@year_start				= year_start
+	,@year_present			= year_present
+	,@year_intermediate_1	= year_intermediate_1
+	,@year_intermediate_2	= year_intermediate_2
+	,@year_intermediate_3	= year_intermediate_3
+	,@year_intermediate_4	= year_intermediate_4
+	,@year_intermediate_5	= year_intermediate_5
+	,@year_end				= year_end
+	,@year_reference		= year_reference
+	,@rate_discount			= discount_rate
+	,@annualization_factor	= annualization_factor
 FROM analysis
-WHERE analysis_id = @analysis_id;
+WHERE analysis_id	= @analysis_id;
 
-SET @current_year = @year_start;
+SET @current_year	= @year_start;
 
 SELECT *
 INTO #scenario_comparison
 FROM scenario_comparison
-WHERE analysis_id = @analysis_id
-	AND scenario_year IN (@year_start, @year_intermediate_1, @year_intermediate_2, @year_intermediate_3, @year_intermediate_4, @year_intermediate_5
-		)
+WHERE analysis_id	= @analysis_id
+	AND scenario_year IN (
+		@year_start
+		,@year_intermediate_1
+		,@year_intermediate_2
+		,@year_intermediate_3
+		,@year_intermediate_4
+		,@year_intermediate_5
+	)
 ORDER BY scenario_year
 
-SELECT @count_scenario_comparison = count(*),
-	@max_scenario_comparison_year = max(scenario_year)
+SELECT 
+	@count_scenario_comparison		= count(*)
+	,@max_scenario_comparison_year	= max(scenario_year)
 FROM #scenario_comparison
 
 --Create blank records in multiyear_results for all years from year_start to year_end
 BEGIN TRANSACTION
 
 DELETE multiyear_results
-WHERE analysis_id = @analysis_id;
+WHERE analysis_id	= @analysis_id;
 
 WHILE @current_year <= @year_end
 BEGIN
 	INSERT INTO multiyear_results (
-		scenario_id_base,
-		scenario_id_build,
-		analysis_id,
-		comparison_year,
-		period
+		scenario_id_base
+		,scenario_id_build
+		,analysis_id
+		,comparison_year
+		,period
 		)
 	VALUES (
 		CASE 
+			WHEN @current_year <= @year_present
+				THEN 0
 			WHEN @current_year <= @max_scenario_comparison_year
 				THEN - 1
 			ELSE - 2
 			END,
 		CASE 
+			WHEN @current_year <= @year_present
+				THEN 0
 			WHEN @current_year <= @max_scenario_comparison_year
 				THEN - 1
 			ELSE - 2
@@ -84,28 +99,33 @@ END
 
 COMMIT TRANSACTION
 
---populate individual benefit columns with annualized results for start_year
+-- populate individual benefit columns with annualized results for start_year
 -- don't need this for most fields whose values are determined by fact that base and build are the same (so dif is 0 and ratio is 1)
 BEGIN TRANSACTION
 
 UPDATE multiyear_results
-SET scenario_id_base = sc.scenario_id_base,
-	scenario_id_build = sc.scenario_id_build,
+SET scenario_id_base		= sc.scenario_id_base
+	,scenario_id_build		= sc.scenario_id_build
+	
 	-- these will end up NULL if no start_year run of person_trip_processor (which is their default value so no harm done)
-	base_tt_person = @annualization_factor * sc.base_tt_person,
-	build_tt_person = @annualization_factor * sc.build_tt_person,
+	,base_tt_person			= @annualization_factor * sc.base_tt_person
+	,build_tt_person		= @annualization_factor * sc.build_tt_person
+	
 	-- these will end up NULL if no start_year run of aggregate_trips_processor (which is their default value so no harm done)
-	base_tt_truck_comm = @annualization_factor * (sc.base_tt_comm + sc.base_tt_truck),
-	build_tt_truck_comm = @annualization_factor * (sc.build_tt_comm + sc.build_tt_truck),
+	,base_tt_truck_comm		= @annualization_factor * (sc.base_tt_comm + sc.base_tt_truck)
+	,build_tt_truck_comm	= @annualization_factor * (sc.build_tt_comm + sc.build_tt_truck)
+	
 	-- these will end up NULL if no start_year run of link_processor
-	base_rel_cost = @annualization_factor * sc.base_rel_cost,
-	build_rel_cost = @annualization_factor * sc.build_rel_cost,
+	,base_rel_cost			= @annualization_factor * sc.base_rel_cost
+	,build_rel_cost			= @annualization_factor * sc.build_rel_cost
+	
 	-- these will end up NULL if no start_year run of demobraphics_processor
-	persons = sc.persons,
-	persons_coc = sc.persons_coc,
-	persons_coc_race = sc.persons_coc_race,
-	persons_coc_age = sc.persons_coc_age,
-	persons_coc_poverty = sc.persons_coc_poverty
+	,persons				= sc.persons
+	,persons_coc			= sc.persons_coc
+	,persons_coc_race		= sc.persons_coc_race
+	,persons_coc_age		= sc.persons_coc_age
+	,persons_coc_poverty	= sc.persons_coc_poverty
+
 FROM multiyear_results mr
 INNER JOIN #scenario_comparison sc
 	ON mr.analysis_id = sc.analysis_id
@@ -119,107 +139,121 @@ COMMIT TRANSACTION
 BEGIN TRANSACTION
 
 UPDATE multiyear_results
-SET scenario_id_base = sc.scenario_id_base,
-	scenario_id_build = sc.scenario_id_build,
-	ben_co = @annualization_factor * sc.ben_co,
-	ben_co2 = @annualization_factor * sc.ben_co2,
-	ben_nox = @annualization_factor * sc.ben_nox,
-	ben_pm10 = @annualization_factor * sc.ben_pm10,
-	ben_pm25 = @annualization_factor * sc.ben_pm25,
-	ben_rogs = @annualization_factor * sc.ben_rogs,
-	ben_so2 = @annualization_factor * sc.ben_so2,
-	ben_autos_owned_coc = sc.ben_autos_owned_coc,
-	ben_autos_owned = sc.ben_autos_owned,
-	ben_crashcost_fat = sc.ben_crashcost_fat,
-	ben_crashcost_inj = sc.ben_crashcost_inj,
-	ben_crashcost_pdo = sc.ben_crashcost_pdo,
-	ben_persons_phys_active_coc = sc.ben_persons_phys_active_coc,
-	ben_persons_phys_active = sc.ben_persons_phys_active,
-
-    ben_bike = sc.benefit_bike,
-    ben_bike_coc = sc.benefit_bike_coc,
-    ben_bike_coc_age = sc.benefit_bike_senior,
-    ben_bike_coc_poverty = sc.benefit_bike_low_income,
-    ben_bike_coc_race = sc.benefit_bike_minority,
-
-    ben_walk = sc.benefit_walk,
-    ben_walk_coc = sc.benefit_walk_coc,
-    ben_walk_coc_age = sc.benefit_walk_senior,
-    ben_walk_coc_poverty = sc.benefit_walk_low_income,
-    ben_walk_coc_race = sc.benefit_walk_minority,
-
-	ben_relcost_auto = @annualization_factor * sc.ben_relcost_auto,
-	ben_relcost_truck_hvy = @annualization_factor * sc.ben_relcost_truck_hvy,
-	ben_relcost_truck_lht = @annualization_factor * sc.ben_relcost_truck_lht,
-	ben_relcost_truck_med = @annualization_factor * sc.ben_relcost_truck_med,
-	ben_tt_at_commute = @annualization_factor * sc.ben_tt_at_commute,
-	ben_tt_auto_commute = @annualization_factor * sc.ben_tt_auto_commute,
-	ben_tt_transit_commute = @annualization_factor * sc.ben_tt_transit_commute,
-	ben_tt_at_noncommute = @annualization_factor * sc.ben_tt_at_noncommute,
-	ben_tt_auto_noncommute = @annualization_factor * sc.ben_tt_auto_noncommute,
-	ben_tt_transit_noncommute = @annualization_factor * sc.ben_tt_transit_noncommute,
-	ben_tt_at_commute_coc = @annualization_factor * sc.ben_tt_at_commute_coc,
-	ben_tt_auto_commute_coc = @annualization_factor * sc.ben_tt_auto_commute_coc,
-	ben_tt_transit_commute_coc = @annualization_factor * sc.ben_tt_transit_commute_coc,
-	ben_tt_at_noncommute_coc = @annualization_factor * sc.ben_tt_at_noncommute_coc,
-	ben_tt_auto_noncommute_coc = @annualization_factor * sc.ben_tt_auto_noncommute_coc,
-	ben_tt_transit_noncommute_coc = @annualization_factor * sc.ben_tt_transit_noncommute_coc,
-	ben_tt_comm = @annualization_factor * sc.ben_tt_comm,
-	ben_tt_truck = @annualization_factor * sc.ben_tt_truck,
-	ben_voc_auto = @annualization_factor * sc.ben_voc_auto,
-	ben_voc_truck_lht = @annualization_factor * sc.ben_voc_truck_lht,
-	ben_voc_truck_med = @annualization_factor * sc.ben_voc_truck_med,
-	ben_voc_truck_hvy = @annualization_factor * sc.ben_voc_truck_hvy,
-	toll_rev_base = @annualization_factor * (sc.toll_auto_commute_base + toll_auto_noncommute_base) + toll_comm_base + toll_truck_base,
-	toll_rev_build = @annualization_factor * (sc.toll_auto_commute_build + toll_auto_noncommute_build) + toll_comm_build + toll_truck_build,
-	fare_rev_base = @annualization_factor * (sc.fare_transit_commute_base + fare_transit_noncommute_base),
-	fare_rev_build = @annualization_factor * (sc.fare_transit_commute_build + fare_transit_noncommute_build),
+SET scenario_id_base = sc.scenario_id_base
+	,scenario_id_build = sc.scenario_id_build
+	
+	,ben_co									= @annualization_factor * sc.ben_co
+	,ben_co2								= @annualization_factor * sc.ben_co2
+	,ben_nox								= @annualization_factor * sc.ben_nox
+	,ben_pm10								= @annualization_factor * sc.ben_pm10
+	,ben_pm25								= @annualization_factor * sc.ben_pm25
+	,ben_rogs								= @annualization_factor * sc.ben_rogs
+	,ben_so2								= @annualization_factor * sc.ben_so2
+	
+	,ben_autos_owned_coc					= sc.ben_autos_owned_coc
+	,ben_autos_owned						= sc.ben_autos_owned
+	,ben_crashcost_fat						= sc.ben_crashcost_fat
+	,ben_crashcost_inj						= sc.ben_crashcost_inj
+	,ben_crashcost_pdo						= sc.ben_crashcost_pdo
+	,ben_persons_phys_active_coc			= sc.ben_persons_phys_active_coc
+	,ben_persons_phys_active				= sc.ben_persons_phys_active
+	
+    ,ben_bike								= sc.benefit_bike
+    ,ben_bike_coc							= sc.benefit_bike_coc
+    ,ben_bike_coc_age						= sc.benefit_bike_senior
+    ,ben_bike_coc_poverty					= sc.benefit_bike_low_income
+    ,ben_bike_coc_race						= sc.benefit_bike_minority
+	
+    ,ben_walk								= sc.benefit_walk
+    ,ben_walk_coc							= sc.benefit_walk_coc
+    ,ben_walk_coc_age						= sc.benefit_walk_senior
+    ,ben_walk_coc_poverty					= sc.benefit_walk_low_income
+    ,ben_walk_coc_race						= sc.benefit_walk_minority
+	
+	,ben_relcost_auto						= @annualization_factor * sc.ben_relcost_auto
+	,ben_relcost_truck_hvy					= @annualization_factor * sc.ben_relcost_truck_hvy
+	,ben_relcost_truck_lht					= @annualization_factor * sc.ben_relcost_truck_lht
+	,ben_relcost_truck_med					= @annualization_factor * sc.ben_relcost_truck_med
+	,ben_tt_at_commute						= @annualization_factor * sc.ben_tt_at_commute
+	,ben_tt_auto_commute					= @annualization_factor * sc.ben_tt_auto_commute
+	,ben_tt_transit_commute					= @annualization_factor * sc.ben_tt_transit_commute
+	,ben_tt_at_noncommute					= @annualization_factor * sc.ben_tt_at_noncommute
+	,ben_tt_auto_noncommute					= @annualization_factor * sc.ben_tt_auto_noncommute
+	,ben_tt_transit_noncommute				= @annualization_factor * sc.ben_tt_transit_noncommute
+	,ben_tt_at_commute_coc					= @annualization_factor * sc.ben_tt_at_commute_coc
+	,ben_tt_auto_commute_coc				= @annualization_factor * sc.ben_tt_auto_commute_coc
+	,ben_tt_transit_commute_coc				= @annualization_factor * sc.ben_tt_transit_commute_coc
+	,ben_tt_at_noncommute_coc				= @annualization_factor * sc.ben_tt_at_noncommute_coc
+	,ben_tt_auto_noncommute_coc				= @annualization_factor * sc.ben_tt_auto_noncommute_coc
+	,ben_tt_transit_noncommute_coc			= @annualization_factor * sc.ben_tt_transit_noncommute_coc
+	,ben_tt_comm							= @annualization_factor * sc.ben_tt_comm
+	,ben_tt_truck							= @annualization_factor * sc.ben_tt_truck
+	,ben_voc_auto							= @annualization_factor * sc.ben_voc_auto
+	,ben_voc_truck_lht						= @annualization_factor * sc.ben_voc_truck_lht
+	,ben_voc_truck_med						= @annualization_factor * sc.ben_voc_truck_med
+	,ben_voc_truck_hvy						= @annualization_factor * sc.ben_voc_truck_hvy
+	,toll_rev_base							= @annualization_factor * (sc.toll_auto_commute_base + toll_auto_noncommute_base) + toll_comm_base + toll_truck_base
+	,toll_rev_build							= @annualization_factor * (sc.toll_auto_commute_build + toll_auto_noncommute_build) + toll_comm_build + toll_truck_build
+	,fare_rev_base							= @annualization_factor * (sc.fare_transit_commute_base + fare_transit_noncommute_base)
+	,fare_rev_build							= @annualization_factor * (sc.fare_transit_commute_build + fare_transit_noncommute_build)
+	
 	-- totals_feature
-	base_tt_person = @annualization_factor * sc.base_tt_person,
-	build_tt_person = @annualization_factor * sc.build_tt_person,
-	base_tt_truck_comm = @annualization_factor * (sc.base_tt_comm + sc.base_tt_truck),
-	build_tt_truck_comm = @annualization_factor * (sc.build_tt_comm + sc.build_tt_truck),
-	ratio_tt_person = sc.build_tt_person / sc.base_tt_person,
-	ratio_tt_truck_comm = (sc.build_tt_comm + sc.build_tt_truck) / (sc.base_tt_comm + sc.base_tt_truck),
-	base_rel_cost = @annualization_factor * sc.base_rel_cost,
-	build_rel_cost = @annualization_factor * sc.build_rel_cost,
+	,base_tt_person							= @annualization_factor * sc.base_tt_person
+	,build_tt_person						= @annualization_factor * sc.build_tt_person
+	,base_tt_truck_comm						= @annualization_factor * (sc.base_tt_comm + sc.base_tt_truck)
+	,build_tt_truck_comm					= @annualization_factor * (sc.build_tt_comm + sc.build_tt_truck)
+	,ratio_tt_person						= sc.build_tt_person / sc.base_tt_person
+	,ratio_tt_truck_comm					= (sc.build_tt_comm + sc.build_tt_truck) / (sc.base_tt_comm + sc.base_tt_truck)
+	,base_rel_cost							= @annualization_factor * sc.base_rel_cost
+	,build_rel_cost							= @annualization_factor * sc.build_rel_cost
+	
 	-- coc_detail
-	ben_autos_owned_coc_race = sc.ben_autos_owned_coc_race,
-	ben_persons_phys_active_coc_race = sc.ben_persons_phys_active_coc_race,
-	ben_tt_at_commute_coc_race = @annualization_factor * sc.ben_tt_at_commute_coc_race,
-	ben_tt_auto_commute_coc_race = @annualization_factor * sc.ben_tt_auto_commute_coc_race,
-	ben_tt_transit_commute_coc_race = @annualization_factor * sc.ben_tt_transit_commute_coc_race,
-	ben_tt_at_noncommute_coc_race = @annualization_factor * sc.ben_tt_at_noncommute_coc_race,
-	ben_tt_auto_noncommute_coc_race = @annualization_factor * sc.ben_tt_auto_noncommute_coc_race,
-	ben_tt_transit_noncommute_coc_race = @annualization_factor * sc.ben_tt_transit_noncommute_coc_race,
-	ben_autos_owned_coc_age = sc.ben_autos_owned_coc_age,
-	ben_persons_phys_active_coc_age = sc.ben_persons_phys_active_coc_age,
-	ben_tt_at_commute_coc_age = @annualization_factor * sc.ben_tt_at_commute_coc_age,
-	ben_tt_auto_commute_coc_age = @annualization_factor * sc.ben_tt_auto_commute_coc_age,
-	ben_tt_transit_commute_coc_age = @annualization_factor * sc.ben_tt_transit_commute_coc_age,
-	ben_tt_at_noncommute_coc_age = @annualization_factor * sc.ben_tt_at_noncommute_coc_age,
-	ben_tt_auto_noncommute_coc_age = @annualization_factor * sc.ben_tt_auto_noncommute_coc_age,
-	ben_tt_transit_noncommute_coc_age = @annualization_factor * sc.ben_tt_transit_noncommute_coc_age,
-	ben_autos_owned_coc_poverty = sc.ben_autos_owned_coc_poverty,
-	ben_persons_phys_active_coc_poverty = sc.ben_persons_phys_active_coc_poverty,
-	ben_tt_at_commute_coc_poverty = @annualization_factor * sc.ben_tt_at_commute_coc_poverty,
-	ben_tt_auto_commute_coc_poverty = @annualization_factor * sc.ben_tt_auto_commute_coc_poverty,
-	ben_tt_transit_commute_coc_poverty = @annualization_factor * sc.ben_tt_transit_commute_coc_poverty,
-	ben_tt_at_noncommute_coc_poverty = @annualization_factor * sc.ben_tt_at_noncommute_coc_poverty,
-	ben_tt_auto_noncommute_coc_poverty = @annualization_factor * sc.ben_tt_auto_noncommute_coc_poverty,
-	ben_tt_transit_noncommute_coc_poverty = @annualization_factor * sc.ben_tt_transit_noncommute_coc_poverty,
-	persons = sc.persons,
-	persons_coc = sc.persons_coc,
-	persons_coc_race = sc.persons_coc_race,
-	persons_coc_age = sc.persons_coc_age,
-	persons_coc_poverty = sc.persons_coc_poverty
+	,ben_autos_owned_coc_race				= sc.ben_autos_owned_coc_race
+	,ben_persons_phys_active_coc_race		= sc.ben_persons_phys_active_coc_race
+	,ben_tt_at_commute_coc_race				= @annualization_factor * sc.ben_tt_at_commute_coc_race
+	,ben_tt_auto_commute_coc_race			= @annualization_factor * sc.ben_tt_auto_commute_coc_race
+	,ben_tt_transit_commute_coc_race		= @annualization_factor * sc.ben_tt_transit_commute_coc_race
+	,ben_tt_at_noncommute_coc_race			= @annualization_factor * sc.ben_tt_at_noncommute_coc_race
+	,ben_tt_auto_noncommute_coc_race		= @annualization_factor * sc.ben_tt_auto_noncommute_coc_race
+	,ben_tt_transit_noncommute_coc_race		= @annualization_factor * sc.ben_tt_transit_noncommute_coc_race
+
+	,ben_autos_owned_coc_age				= sc.ben_autos_owned_coc_age
+	,ben_persons_phys_active_coc_age		= sc.ben_persons_phys_active_coc_age
+	,ben_tt_at_commute_coc_age				= @annualization_factor * sc.ben_tt_at_commute_coc_age
+	,ben_tt_auto_commute_coc_age			= @annualization_factor * sc.ben_tt_auto_commute_coc_age
+	,ben_tt_transit_commute_coc_age			= @annualization_factor * sc.ben_tt_transit_commute_coc_age
+	,ben_tt_at_noncommute_coc_age			= @annualization_factor * sc.ben_tt_at_noncommute_coc_age
+	,ben_tt_auto_noncommute_coc_age			= @annualization_factor * sc.ben_tt_auto_noncommute_coc_age
+	,ben_tt_transit_noncommute_coc_age		= @annualization_factor * sc.ben_tt_transit_noncommute_coc_age
+
+	,ben_autos_owned_coc_poverty			= sc.ben_autos_owned_coc_poverty
+	,ben_persons_phys_active_coc_poverty	= sc.ben_persons_phys_active_coc_poverty
+	,ben_tt_at_commute_coc_poverty			= @annualization_factor * sc.ben_tt_at_commute_coc_poverty
+	,ben_tt_auto_commute_coc_poverty		= @annualization_factor * sc.ben_tt_auto_commute_coc_poverty
+	,ben_tt_transit_commute_coc_poverty		= @annualization_factor * sc.ben_tt_transit_commute_coc_poverty
+	,ben_tt_at_noncommute_coc_poverty		= @annualization_factor * sc.ben_tt_at_noncommute_coc_poverty
+	,ben_tt_auto_noncommute_coc_poverty		= @annualization_factor * sc.ben_tt_auto_noncommute_coc_poverty
+	,ben_tt_transit_noncommute_coc_poverty	= @annualization_factor * sc.ben_tt_transit_noncommute_coc_poverty
+
+	,persons								= sc.persons
+	,persons_coc							= sc.persons_coc
+	,persons_coc_race						= sc.persons_coc_race
+	,persons_coc_age						= sc.persons_coc_age
+	,persons_coc_poverty					= sc.persons_coc_poverty
+
 FROM multiyear_results mr
 INNER JOIN #scenario_comparison sc
 	ON mr.analysis_id = sc.analysis_id
 		AND mr.comparison_year = sc.scenario_year
 WHERE mr.analysis_id = @analysis_id
-	AND mr.comparison_year IN (@year_start, @year_intermediate_1, @year_intermediate_2, @year_intermediate_3, @year_intermediate_4, @year_intermediate_5
-		)
+	AND mr.comparison_year IN (
+		@year_start
+		,@year_intermediate_1
+		,@year_intermediate_2
+		,@year_intermediate_3
+		,@year_intermediate_4
+		,@year_intermediate_5
+	)
 
 -- from cost_inputs update multiyear_results
 --UPDATE multiyear_results
@@ -244,15 +278,23 @@ WHERE mr.analysis_id = @analysis_id
 COMMIT TRANSACTION
 
 -- begin interpolation process
-SELECT row_number() OVER (
+SELECT 
+	row_number() OVER (
 		ORDER BY comparison_year
-		) AS rownum,
-	*
+		) AS rownum
+	,*
 INTO #comparison_years
 FROM multiyear_results
 WHERE analysis_id = @analysis_id
-	AND comparison_year IN (@year_start, @year_intermediate_1, @year_intermediate_2, @year_intermediate_3, @year_intermediate_4, @year_intermediate_5
-		);
+	AND comparison_year IN (
+		@year_start
+		,@year_present
+		,@year_intermediate_1
+		,@year_intermediate_2
+		,@year_intermediate_3
+		,@year_intermediate_4
+		,@year_intermediate_5
+	);
 
 SELECT *
 INTO #comparison_years_start
@@ -260,29 +302,34 @@ FROM #comparison_years
 WHERE rownum = 1;
 
 SELECT *
-INTO #comparison_years_i1
+INTO #comparison_years_i0
 FROM #comparison_years
 WHERE rownum = 2;
 
 SELECT *
-INTO #comparison_years_i2
+INTO #comparison_years_i1
 FROM #comparison_years
 WHERE rownum = 3;
 
 SELECT *
-INTO #comparison_years_i3
+INTO #comparison_years_i2
 FROM #comparison_years
 WHERE rownum = 4;
 
 SELECT *
-INTO #comparison_years_i4
+INTO #comparison_years_i3
 FROM #comparison_years
 WHERE rownum = 5;
 
 SELECT *
-INTO #comparison_years_i5
+INTO #comparison_years_i4
 FROM #comparison_years
 WHERE rownum = 6;
+
+SELECT *
+INTO #comparison_years_i5
+FROM #comparison_years
+WHERE rownum = 7;
 
 BEGIN TRANSACTION
 
@@ -291,1459 +338,53 @@ SET @current_year = (
 		FROM #comparison_years_start
 		) + 1;
 
-WHILE @current_year < (
+WHILE @current_year <= (
 		SELECT TOP 1 comparison_year
-		FROM #comparison_years_i1
+		FROM #comparison_years_i0
 		)
 BEGIN
 	UPDATE multiyear_results
-	SET ben_co = (
-			(
-				SELECT TOP 1 ben_co
-				FROM #comparison_years_i1
-				) - (
-				SELECT TOP 1 ben_co
-				FROM #comparison_years_start
-				)
-			) / (
-			CASE 
-				WHEN (
-						(
-							SELECT TOP 1 period
-							FROM #comparison_years_i1
-							) - (
-							SELECT TOP 1 period
-							FROM #comparison_years_start
-							)
-						) = 0
-					THEN 1
-				ELSE (
-						(
-							SELECT TOP 1 period
-							FROM #comparison_years_i1
-							) - (
-							SELECT TOP 1 period
-							FROM #comparison_years_start
-							)
-						)
-				END
-			) + (
-			SELECT TOP 1 ben_co
-			FROM multiyear_results
-			WHERE analysis_id = @analysis_id
-				AND period = mr.period - 1
-			),
-		ben_co2 = (
-			(
-				SELECT TOP 1 ben_co2
-				FROM #comparison_years_i1
-				) - (
-				SELECT TOP 1 ben_co2
-				FROM #comparison_years_start
-				)
-			) / (
-			CASE 
-				WHEN (
-						(
-							SELECT TOP 1 period
-							FROM #comparison_years_i1
-							) - (
-							SELECT TOP 1 period
-							FROM #comparison_years_start
-							)
-						) = 0
-					THEN 1
-				ELSE (
-						(
-							SELECT TOP 1 period
-							FROM #comparison_years_i1
-							) - (
-							SELECT TOP 1 period
-							FROM #comparison_years_start
-							)
-						)
-				END
-			) + (
-			SELECT TOP 1 ben_co2
-			FROM multiyear_results
-			WHERE analysis_id = @analysis_id
-				AND period = mr.period - 1
-			),
-		ben_nox = (
-			(
-				SELECT TOP 1 ben_nox
-				FROM #comparison_years_i1
-				) - (
-				SELECT TOP 1 ben_nox
-				FROM #comparison_years_start
-				)
-			) / (
-			CASE 
-				WHEN (
-						(
-							SELECT TOP 1 period
-							FROM #comparison_years_i1
-							) - (
-							SELECT TOP 1 period
-							FROM #comparison_years_start
-							)
-						) = 0
-					THEN 1
-				ELSE (
-						(
-							SELECT TOP 1 period
-							FROM #comparison_years_i1
-							) - (
-							SELECT TOP 1 period
-							FROM #comparison_years_start
-							)
-						)
-				END
-			) + (
-			SELECT TOP 1 ben_nox
-			FROM multiyear_results
-			WHERE analysis_id = @analysis_id
-				AND period = mr.period - 1
-			),
-		ben_pm10 = (
-			(
-				SELECT TOP 1 ben_pm10
-				FROM #comparison_years_i1
-				) - (
-				SELECT TOP 1 ben_pm10
-				FROM #comparison_years_start
-				)
-			) / (
-			CASE 
-				WHEN (
-						(
-							SELECT TOP 1 period
-							FROM #comparison_years_i1
-							) - (
-							SELECT TOP 1 period
-							FROM #comparison_years_start
-							)
-						) = 0
-					THEN 1
-				ELSE (
-						(
-							SELECT TOP 1 period
-							FROM #comparison_years_i1
-							) - (
-							SELECT TOP 1 period
-							FROM #comparison_years_start
-							)
-						)
-				END
-			) + (
-			SELECT TOP 1 ben_pm10
-			FROM multiyear_results
-			WHERE analysis_id = @analysis_id
-				AND period = mr.period - 1
-			),
-		ben_pm25 = (
-			(
-				SELECT TOP 1 ben_pm25
-				FROM #comparison_years_i1
-				) - (
-				SELECT TOP 1 ben_pm25
-				FROM #comparison_years_start
-				)
-			) / (
-			CASE 
-				WHEN (
-						(
-							SELECT TOP 1 period
-							FROM #comparison_years_i1
-							) - (
-							SELECT TOP 1 period
-							FROM #comparison_years_start
-							)
-						) = 0
-					THEN 1
-				ELSE (
-						(
-							SELECT TOP 1 period
-							FROM #comparison_years_i1
-							) - (
-							SELECT TOP 1 period
-							FROM #comparison_years_start
-							)
-						)
-				END
-			) + (
-			SELECT TOP 1 ben_pm25
-			FROM multiyear_results
-			WHERE analysis_id = @analysis_id
-				AND period = mr.period - 1
-			),
-		ben_rogs = (
-			(
-				SELECT TOP 1 ben_rogs
-				FROM #comparison_years_i1
-				) - (
-				SELECT TOP 1 ben_rogs
-				FROM #comparison_years_start
-				)
-			) / (
-			CASE 
-				WHEN (
-						(
-							SELECT TOP 1 period
-							FROM #comparison_years_i1
-							) - (
-							SELECT TOP 1 period
-							FROM #comparison_years_start
-							)
-						) = 0
-					THEN 1
-				ELSE (
-						(
-							SELECT TOP 1 period
-							FROM #comparison_years_i1
-							) - (
-							SELECT TOP 1 period
-							FROM #comparison_years_start
-							)
-						)
-				END
-			) + (
-			SELECT TOP 1 ben_rogs
-			FROM multiyear_results
-			WHERE analysis_id = @analysis_id
-				AND period = mr.period - 1
-			),
-		ben_so2 = (
-			(
-				SELECT TOP 1 ben_so2
-				FROM #comparison_years_i1
-				) - (
-				SELECT TOP 1 ben_so2
-				FROM #comparison_years_start
-				)
-			) / (
-			CASE 
-				WHEN (
-						(
-							SELECT TOP 1 period
-							FROM #comparison_years_i1
-							) - (
-							SELECT TOP 1 period
-							FROM #comparison_years_start
-							)
-						) = 0
-					THEN 1
-				ELSE (
-						(
-							SELECT TOP 1 period
-							FROM #comparison_years_i1
-							) - (
-							SELECT TOP 1 period
-							FROM #comparison_years_start
-							)
-						)
-				END
-			) + (
-			SELECT TOP 1 ben_so2
-			FROM multiyear_results
-			WHERE analysis_id = @analysis_id
-				AND period = mr.period - 1
-			),
-		ben_autos_owned_coc = (
-			(
-				SELECT TOP 1 ben_autos_owned_coc
-				FROM #comparison_years_i1
-				) - (
-				SELECT TOP 1 ben_autos_owned_coc
-				FROM #comparison_years_start
-				)
-			) / (
-			CASE 
-				WHEN (
-						(
-							SELECT TOP 1 period
-							FROM #comparison_years_i1
-							) - (
-							SELECT TOP 1 period
-							FROM #comparison_years_start
-							)
-						) = 0
-					THEN 1
-				ELSE (
-						(
-							SELECT TOP 1 period
-							FROM #comparison_years_i1
-							) - (
-							SELECT TOP 1 period
-							FROM #comparison_years_start
-							)
-						)
-				END
-			) + (
-			SELECT TOP 1 ben_autos_owned_coc
-			FROM multiyear_results
-			WHERE analysis_id = @analysis_id
-				AND period = mr.period - 1
-			),
-		ben_autos_owned = (
-			(
-				SELECT TOP 1 ben_autos_owned
-				FROM #comparison_years_i1
-				) - (
-				SELECT TOP 1 ben_autos_owned
-				FROM #comparison_years_start
-				)
-			) / (
-			CASE 
-				WHEN (
-						(
-							SELECT TOP 1 period
-							FROM #comparison_years_i1
-							) - (
-							SELECT TOP 1 period
-							FROM #comparison_years_start
-							)
-						) = 0
-					THEN 1
-				ELSE (
-						(
-							SELECT TOP 1 period
-							FROM #comparison_years_i1
-							) - (
-							SELECT TOP 1 period
-							FROM #comparison_years_start
-							)
-						)
-				END
-			) + (
-			SELECT TOP 1 ben_autos_owned
-			FROM multiyear_results
-			WHERE analysis_id = @analysis_id
-				AND period = mr.period - 1
-			),
-		ben_crashcost_fat = (
-			(
-				SELECT TOP 1 ben_crashcost_fat
-				FROM #comparison_years_i1
-				) - (
-				SELECT TOP 1 ben_crashcost_fat
-				FROM #comparison_years_start
-				)
-			) / (
-			CASE 
-				WHEN (
-						(
-							SELECT TOP 1 period
-							FROM #comparison_years_i1
-							) - (
-							SELECT TOP 1 period
-							FROM #comparison_years_start
-							)
-						) = 0
-					THEN 1
-				ELSE (
-						(
-							SELECT TOP 1 period
-							FROM #comparison_years_i1
-							) - (
-							SELECT TOP 1 period
-							FROM #comparison_years_start
-							)
-						)
-				END
-			) + (
-			SELECT TOP 1 ben_crashcost_fat
-			FROM multiyear_results
-			WHERE analysis_id = @analysis_id
-				AND period = mr.period - 1
-			),
-		ben_crashcost_inj = (
-			(
-				SELECT TOP 1 ben_crashcost_inj
-				FROM #comparison_years_i1
-				) - (
-				SELECT TOP 1 ben_crashcost_inj
-				FROM #comparison_years_start
-				)
-			) / (
-			CASE 
-				WHEN (
-						(
-							SELECT TOP 1 period
-							FROM #comparison_years_i1
-							) - (
-							SELECT TOP 1 period
-							FROM #comparison_years_start
-							)
-						) = 0
-					THEN 1
-				ELSE (
-						(
-							SELECT TOP 1 period
-							FROM #comparison_years_i1
-							) - (
-							SELECT TOP 1 period
-							FROM #comparison_years_start
-							)
-						)
-				END
-			) + (
-			SELECT TOP 1 ben_crashcost_inj
-			FROM multiyear_results
-			WHERE analysis_id = @analysis_id
-				AND period = mr.period - 1
-			),
-		ben_crashcost_pdo = (
-			(
-				SELECT TOP 1 ben_crashcost_pdo
-				FROM #comparison_years_i1
-				) - (
-				SELECT TOP 1 ben_crashcost_pdo
-				FROM #comparison_years_start
-				)
-			) / (
-			CASE 
-				WHEN (
-						(
-							SELECT TOP 1 period
-							FROM #comparison_years_i1
-							) - (
-							SELECT TOP 1 period
-							FROM #comparison_years_start
-							)
-						) = 0
-					THEN 1
-				ELSE (
-						(
-							SELECT TOP 1 period
-							FROM #comparison_years_i1
-							) - (
-							SELECT TOP 1 period
-							FROM #comparison_years_start
-							)
-						)
-				END
-			) + (
-			SELECT TOP 1 ben_crashcost_pdo
-			FROM multiyear_results
-			WHERE analysis_id = @analysis_id
-				AND period = mr.period - 1
-			),
-		ben_persons_phys_active_coc = (
-			(
-				SELECT TOP 1 ben_persons_phys_active_coc
-				FROM #comparison_years_i1
-				) - (
-				SELECT TOP 1 ben_persons_phys_active_coc
-				FROM #comparison_years_start
-				)
-			) / (
-			CASE 
-				WHEN (
-						(
-							SELECT TOP 1 period
-							FROM #comparison_years_i1
-							) - (
-							SELECT TOP 1 period
-							FROM #comparison_years_start
-							)
-						) = 0
-					THEN 1
-				ELSE (
-						(
-							SELECT TOP 1 period
-							FROM #comparison_years_i1
-							) - (
-							SELECT TOP 1 period
-							FROM #comparison_years_start
-							)
-						)
-				END
-			) + (
-			SELECT TOP 1 ben_persons_phys_active_coc
-			FROM multiyear_results
-			WHERE analysis_id = @analysis_id
-				AND period = mr.period - 1
-			),
-		ben_persons_phys_active = (
-			(
-				SELECT TOP 1 ben_persons_phys_active
-				FROM #comparison_years_i1
-				) - (
-				SELECT TOP 1 ben_persons_phys_active
-				FROM #comparison_years_start
-				)
-			) / (
-			CASE 
-				WHEN (
-						(
-							SELECT TOP 1 period
-							FROM #comparison_years_i1
-							) - (
-							SELECT TOP 1 period
-							FROM #comparison_years_start
-							)
-						) = 0
-					THEN 1
-				ELSE (
-						(
-							SELECT TOP 1 period
-							FROM #comparison_years_i1
-							) - (
-							SELECT TOP 1 period
-							FROM #comparison_years_start
-							)
-						)
-				END
-			) + (
-			SELECT TOP 1 ben_persons_phys_active
-			FROM multiyear_results
-			WHERE analysis_id = @analysis_id
-				AND period = mr.period - 1
-			),
-
-        ben_bike = (
-			(
-				SELECT TOP 1 ben_bike
-				FROM #comparison_years_i1
-				) - (
-				SELECT TOP 1 ben_bike
-				FROM #comparison_years_start
-				)
-			) / (
-			CASE 
-				WHEN (
-						(
-							SELECT TOP 1 period
-							FROM #comparison_years_i1
-							) - (
-							SELECT TOP 1 period
-							FROM #comparison_years_start
-							)
-						) = 0
-					THEN 1
-				ELSE (
-						(
-							SELECT TOP 1 period
-							FROM #comparison_years_i1
-							) - (
-							SELECT TOP 1 period
-							FROM #comparison_years_start
-							)
-						)
-				END
-			) + (
-			SELECT TOP 1 ben_bike
-			FROM multiyear_results
-			WHERE analysis_id = @analysis_id
-				AND period = mr.period - 1
-			),
-        ben_bike_coc = (
-			(
-				SELECT TOP 1 ben_bike_coc
-				FROM #comparison_years_i1
-				) - (
-				SELECT TOP 1 ben_bike_coc
-				FROM #comparison_years_start
-				)
-			) / (
-			CASE 
-				WHEN (
-						(
-							SELECT TOP 1 period
-							FROM #comparison_years_i1
-							) - (
-							SELECT TOP 1 period
-							FROM #comparison_years_start
-							)
-						) = 0
-					THEN 1
-				ELSE (
-						(
-							SELECT TOP 1 period
-							FROM #comparison_years_i1
-							) - (
-							SELECT TOP 1 period
-							FROM #comparison_years_start
-							)
-						)
-				END
-			) + (
-			SELECT TOP 1 ben_bike_coc
-			FROM multiyear_results
-			WHERE analysis_id = @analysis_id
-				AND period = mr.period - 1
-			),
-
-        ben_walk = (
-			(
-				SELECT TOP 1 ben_walk
-				FROM #comparison_years_i1
-				) - (
-				SELECT TOP 1 ben_walk
-				FROM #comparison_years_start
-				)
-			) / (
-			CASE 
-				WHEN (
-						(
-							SELECT TOP 1 period
-							FROM #comparison_years_i1
-							) - (
-							SELECT TOP 1 period
-							FROM #comparison_years_start
-							)
-						) = 0
-					THEN 1
-				ELSE (
-						(
-							SELECT TOP 1 period
-							FROM #comparison_years_i1
-							) - (
-							SELECT TOP 1 period
-							FROM #comparison_years_start
-							)
-						)
-				END
-			) + (
-			SELECT TOP 1 ben_walk
-			FROM multiyear_results
-			WHERE analysis_id = @analysis_id
-				AND period = mr.period - 1
-			),
-        ben_walk_coc = (
-			(
-				SELECT TOP 1 ben_walk_coc
-				FROM #comparison_years_i1
-				) - (
-				SELECT TOP 1 ben_walk_coc
-				FROM #comparison_years_start
-				)
-			) / (
-			CASE 
-				WHEN (
-						(
-							SELECT TOP 1 period
-							FROM #comparison_years_i1
-							) - (
-							SELECT TOP 1 period
-							FROM #comparison_years_start
-							)
-						) = 0
-					THEN 1
-				ELSE (
-						(
-							SELECT TOP 1 period
-							FROM #comparison_years_i1
-							) - (
-							SELECT TOP 1 period
-							FROM #comparison_years_start
-							)
-						)
-				END
-			) + (
-			SELECT TOP 1 ben_walk_coc
-			FROM multiyear_results
-			WHERE analysis_id = @analysis_id
-				AND period = mr.period - 1
-			),
-
-
-
-
-		ben_relcost_auto = (
-			(
-				SELECT TOP 1 ben_relcost_auto
-				FROM #comparison_years_i1
-				) - (
-				SELECT TOP 1 ben_relcost_auto
-				FROM #comparison_years_start
-				)
-			) / (
-			CASE 
-				WHEN (
-						(
-							SELECT TOP 1 period
-							FROM #comparison_years_i1
-							) - (
-							SELECT TOP 1 period
-							FROM #comparison_years_start
-							)
-						) = 0
-					THEN 1
-				ELSE (
-						(
-							SELECT TOP 1 period
-							FROM #comparison_years_i1
-							) - (
-							SELECT TOP 1 period
-							FROM #comparison_years_start
-							)
-						)
-				END
-			) + (
-			SELECT TOP 1 ben_relcost_auto
-			FROM multiyear_results
-			WHERE analysis_id = @analysis_id
-				AND period = mr.period - 1
-			),
-		ben_relcost_truck_hvy = (
-			(
-				SELECT TOP 1 ben_relcost_truck_hvy
-				FROM #comparison_years_i1
-				) - (
-				SELECT TOP 1 ben_relcost_truck_hvy
-				FROM #comparison_years_start
-				)
-			) / (
-			CASE 
-				WHEN (
-						(
-							SELECT TOP 1 period
-							FROM #comparison_years_i1
-							) - (
-							SELECT TOP 1 period
-							FROM #comparison_years_start
-							)
-						) = 0
-					THEN 1
-				ELSE (
-						(
-							SELECT TOP 1 period
-							FROM #comparison_years_i1
-							) - (
-							SELECT TOP 1 period
-							FROM #comparison_years_start
-							)
-						)
-				END
-			) + (
-			SELECT TOP 1 ben_relcost_truck_hvy
-			FROM multiyear_results
-			WHERE analysis_id = @analysis_id
-				AND period = mr.period - 1
-			),
-		ben_relcost_truck_lht = (
-			(
-				SELECT TOP 1 ben_relcost_truck_lht
-				FROM #comparison_years_i1
-				) - (
-				SELECT TOP 1 ben_relcost_truck_lht
-				FROM #comparison_years_start
-				)
-			) / (
-			CASE 
-				WHEN (
-						(
-							SELECT TOP 1 period
-							FROM #comparison_years_i1
-							) - (
-							SELECT TOP 1 period
-							FROM #comparison_years_start
-							)
-						) = 0
-					THEN 1
-				ELSE (
-						(
-							SELECT TOP 1 period
-							FROM #comparison_years_i1
-							) - (
-							SELECT TOP 1 period
-							FROM #comparison_years_start
-							)
-						)
-				END
-			) + (
-			SELECT TOP 1 ben_relcost_truck_lht
-			FROM multiyear_results
-			WHERE analysis_id = @analysis_id
-				AND period = mr.period - 1
-			),
-		ben_relcost_truck_med = (
-			(
-				SELECT TOP 1 ben_relcost_truck_med
-				FROM #comparison_years_i1
-				) - (
-				SELECT TOP 1 ben_relcost_truck_med
-				FROM #comparison_years_start
-				)
-			) / (
-			CASE 
-				WHEN (
-						(
-							SELECT TOP 1 period
-							FROM #comparison_years_i1
-							) - (
-							SELECT TOP 1 period
-							FROM #comparison_years_start
-							)
-						) = 0
-					THEN 1
-				ELSE (
-						(
-							SELECT TOP 1 period
-							FROM #comparison_years_i1
-							) - (
-							SELECT TOP 1 period
-							FROM #comparison_years_start
-							)
-						)
-				END
-			) + (
-			SELECT TOP 1 ben_relcost_truck_med
-			FROM multiyear_results
-			WHERE analysis_id = @analysis_id
-				AND period = mr.period - 1
-			),
-		ben_tt_at_commute = (
-			(
-				SELECT TOP 1 ben_tt_at_commute
-				FROM #comparison_years_i1
-				) - (
-				SELECT TOP 1 ben_tt_at_commute
-				FROM #comparison_years_start
-				)
-			) / (
-			CASE 
-				WHEN (
-						(
-							SELECT TOP 1 period
-							FROM #comparison_years_i1
-							) - (
-							SELECT TOP 1 period
-							FROM #comparison_years_start
-							)
-						) = 0
-					THEN 1
-				ELSE (
-						(
-							SELECT TOP 1 period
-							FROM #comparison_years_i1
-							) - (
-							SELECT TOP 1 period
-							FROM #comparison_years_start
-							)
-						)
-				END
-			) + (
-			SELECT TOP 1 ben_tt_at_commute
-			FROM multiyear_results
-			WHERE analysis_id = @analysis_id
-				AND period = mr.period - 1
-			),
-		ben_tt_auto_commute = (
-			(
-				SELECT TOP 1 ben_tt_auto_commute
-				FROM #comparison_years_i1
-				) - (
-				SELECT TOP 1 ben_tt_auto_commute
-				FROM #comparison_years_start
-				)
-			) / (
-			CASE 
-				WHEN (
-						(
-							SELECT TOP 1 period
-							FROM #comparison_years_i1
-							) - (
-							SELECT TOP 1 period
-							FROM #comparison_years_start
-							)
-						) = 0
-					THEN 1
-				ELSE (
-						(
-							SELECT TOP 1 period
-							FROM #comparison_years_i1
-							) - (
-							SELECT TOP 1 period
-							FROM #comparison_years_start
-							)
-						)
-				END
-			) + (
-			SELECT TOP 1 ben_tt_auto_commute
-			FROM multiyear_results
-			WHERE analysis_id = @analysis_id
-				AND period = mr.period - 1
-			),
-		ben_tt_transit_commute = (
-			(
-				SELECT TOP 1 ben_tt_transit_commute
-				FROM #comparison_years_i1
-				) - (
-				SELECT TOP 1 ben_tt_transit_commute
-				FROM #comparison_years_start
-				)
-			) / (
-			CASE 
-				WHEN (
-						(
-							SELECT TOP 1 period
-							FROM #comparison_years_i1
-							) - (
-							SELECT TOP 1 period
-							FROM #comparison_years_start
-							)
-						) = 0
-					THEN 1
-				ELSE (
-						(
-							SELECT TOP 1 period
-							FROM #comparison_years_i1
-							) - (
-							SELECT TOP 1 period
-							FROM #comparison_years_start
-							)
-						)
-				END
-			) + (
-			SELECT TOP 1 ben_tt_transit_commute
-			FROM multiyear_results
-			WHERE analysis_id = @analysis_id
-				AND period = mr.period - 1
-			),
-		ben_tt_at_noncommute = (
-			(
-				SELECT TOP 1 ben_tt_at_noncommute
-				FROM #comparison_years_i1
-				) - (
-				SELECT TOP 1 ben_tt_at_noncommute
-				FROM #comparison_years_start
-				)
-			) / (
-			CASE 
-				WHEN (
-						(
-							SELECT TOP 1 period
-							FROM #comparison_years_i1
-							) - (
-							SELECT TOP 1 period
-							FROM #comparison_years_start
-							)
-						) = 0
-					THEN 1
-				ELSE (
-						(
-							SELECT TOP 1 period
-							FROM #comparison_years_i1
-							) - (
-							SELECT TOP 1 period
-							FROM #comparison_years_start
-							)
-						)
-				END
-			) + (
-			SELECT TOP 1 ben_tt_at_noncommute
-			FROM multiyear_results
-			WHERE analysis_id = @analysis_id
-				AND period = mr.period - 1
-			),
-		ben_tt_auto_noncommute = (
-			(
-				SELECT TOP 1 ben_tt_auto_noncommute
-				FROM #comparison_years_i1
-				) - (
-				SELECT TOP 1 ben_tt_auto_noncommute
-				FROM #comparison_years_start
-				)
-			) / (
-			CASE 
-				WHEN (
-						(
-							SELECT TOP 1 period
-							FROM #comparison_years_i1
-							) - (
-							SELECT TOP 1 period
-							FROM #comparison_years_start
-							)
-						) = 0
-					THEN 1
-				ELSE (
-						(
-							SELECT TOP 1 period
-							FROM #comparison_years_i1
-							) - (
-							SELECT TOP 1 period
-							FROM #comparison_years_start
-							)
-						)
-				END
-			) + (
-			SELECT TOP 1 ben_tt_auto_noncommute
-			FROM multiyear_results
-			WHERE analysis_id = @analysis_id
-				AND period = mr.period - 1
-			),
-		ben_tt_transit_noncommute = (
-			(
-				SELECT TOP 1 ben_tt_transit_noncommute
-				FROM #comparison_years_i1
-				) - (
-				SELECT TOP 1 ben_tt_transit_noncommute
-				FROM #comparison_years_start
-				)
-			) / (
-			CASE 
-				WHEN (
-						(
-							SELECT TOP 1 period
-							FROM #comparison_years_i1
-							) - (
-							SELECT TOP 1 period
-							FROM #comparison_years_start
-							)
-						) = 0
-					THEN 1
-				ELSE (
-						(
-							SELECT TOP 1 period
-							FROM #comparison_years_i1
-							) - (
-							SELECT TOP 1 period
-							FROM #comparison_years_start
-							)
-						)
-				END
-			) + (
-			SELECT TOP 1 ben_tt_transit_noncommute
-			FROM multiyear_results
-			WHERE analysis_id = @analysis_id
-				AND period = mr.period - 1
-			),
-		ben_tt_at_commute_coc = (
-			(
-				SELECT TOP 1 ben_tt_at_commute_coc
-				FROM #comparison_years_i1
-				) - (
-				SELECT TOP 1 ben_tt_at_commute_coc
-				FROM #comparison_years_start
-				)
-			) / (
-			CASE 
-				WHEN (
-						(
-							SELECT TOP 1 period
-							FROM #comparison_years_i1
-							) - (
-							SELECT TOP 1 period
-							FROM #comparison_years_start
-							)
-						) = 0
-					THEN 1
-				ELSE (
-						(
-							SELECT TOP 1 period
-							FROM #comparison_years_i1
-							) - (
-							SELECT TOP 1 period
-							FROM #comparison_years_start
-							)
-						)
-				END
-			) + (
-			SELECT TOP 1 ben_tt_at_commute_coc
-			FROM multiyear_results
-			WHERE analysis_id = @analysis_id
-				AND period = mr.period - 1
-			),
-		ben_tt_auto_commute_coc = (
-			(
-				SELECT TOP 1 ben_tt_auto_commute_coc
-				FROM #comparison_years_i1
-				) - (
-				SELECT TOP 1 ben_tt_auto_commute_coc
-				FROM #comparison_years_start
-				)
-			) / (
-			CASE 
-				WHEN (
-						(
-							SELECT TOP 1 period
-							FROM #comparison_years_i1
-							) - (
-							SELECT TOP 1 period
-							FROM #comparison_years_start
-							)
-						) = 0
-					THEN 1
-				ELSE (
-						(
-							SELECT TOP 1 period
-							FROM #comparison_years_i1
-							) - (
-							SELECT TOP 1 period
-							FROM #comparison_years_start
-							)
-						)
-				END
-			) + (
-			SELECT TOP 1 ben_tt_auto_commute_coc
-			FROM multiyear_results
-			WHERE analysis_id = @analysis_id
-				AND period = mr.period - 1
-			),
-		ben_tt_transit_commute_coc = (
-			(
-				SELECT TOP 1 ben_tt_transit_commute_coc
-				FROM #comparison_years_i1
-				) - (
-				SELECT TOP 1 ben_tt_transit_commute_coc
-				FROM #comparison_years_start
-				)
-			) / (
-			CASE 
-				WHEN (
-						(
-							SELECT TOP 1 period
-							FROM #comparison_years_i1
-							) - (
-							SELECT TOP 1 period
-							FROM #comparison_years_start
-							)
-						) = 0
-					THEN 1
-				ELSE (
-						(
-							SELECT TOP 1 period
-							FROM #comparison_years_i1
-							) - (
-							SELECT TOP 1 period
-							FROM #comparison_years_start
-							)
-						)
-				END
-			) + (
-			SELECT TOP 1 ben_tt_transit_commute_coc
-			FROM multiyear_results
-			WHERE analysis_id = @analysis_id
-				AND period = mr.period - 1
-			),
-		ben_tt_at_noncommute_coc = (
-			(
-				SELECT TOP 1 ben_tt_at_noncommute_coc
-				FROM #comparison_years_i1
-				) - (
-				SELECT TOP 1 ben_tt_at_noncommute_coc
-				FROM #comparison_years_start
-				)
-			) / (
-			CASE 
-				WHEN (
-						(
-							SELECT TOP 1 period
-							FROM #comparison_years_i1
-							) - (
-							SELECT TOP 1 period
-							FROM #comparison_years_start
-							)
-						) = 0
-					THEN 1
-				ELSE (
-						(
-							SELECT TOP 1 period
-							FROM #comparison_years_i1
-							) - (
-							SELECT TOP 1 period
-							FROM #comparison_years_start
-							)
-						)
-				END
-			) + (
-			SELECT TOP 1 ben_tt_at_noncommute_coc
-			FROM multiyear_results
-			WHERE analysis_id = @analysis_id
-				AND period = mr.period - 1
-			),
-		ben_tt_auto_noncommute_coc = (
-			(
-				SELECT TOP 1 ben_tt_auto_noncommute_coc
-				FROM #comparison_years_i1
-				) - (
-				SELECT TOP 1 ben_tt_auto_noncommute_coc
-				FROM #comparison_years_start
-				)
-			) / (
-			CASE 
-				WHEN (
-						(
-							SELECT TOP 1 period
-							FROM #comparison_years_i1
-							) - (
-							SELECT TOP 1 period
-							FROM #comparison_years_start
-							)
-						) = 0
-					THEN 1
-				ELSE (
-						(
-							SELECT TOP 1 period
-							FROM #comparison_years_i1
-							) - (
-							SELECT TOP 1 period
-							FROM #comparison_years_start
-							)
-						)
-				END
-			) + (
-			SELECT TOP 1 ben_tt_auto_noncommute_coc
-			FROM multiyear_results
-			WHERE analysis_id = @analysis_id
-				AND period = mr.period - 1
-			),
-		ben_tt_transit_noncommute_coc = (
-			(
-				SELECT TOP 1 ben_tt_transit_noncommute_coc
-				FROM #comparison_years_i1
-				) - (
-				SELECT TOP 1 ben_tt_transit_noncommute_coc
-				FROM #comparison_years_start
-				)
-			) / (
-			CASE 
-				WHEN (
-						(
-							SELECT TOP 1 period
-							FROM #comparison_years_i1
-							) - (
-							SELECT TOP 1 period
-							FROM #comparison_years_start
-							)
-						) = 0
-					THEN 1
-				ELSE (
-						(
-							SELECT TOP 1 period
-							FROM #comparison_years_i1
-							) - (
-							SELECT TOP 1 period
-							FROM #comparison_years_start
-							)
-						)
-				END
-			) + (
-			SELECT TOP 1 ben_tt_transit_noncommute_coc
-			FROM multiyear_results
-			WHERE analysis_id = @analysis_id
-				AND period = mr.period - 1
-			),
-		ben_tt_comm = (
-			(
-				SELECT TOP 1 ben_tt_comm
-				FROM #comparison_years_i1
-				) - (
-				SELECT TOP 1 ben_tt_comm
-				FROM #comparison_years_start
-				)
-			) / (
-			CASE 
-				WHEN (
-						(
-							SELECT TOP 1 period
-							FROM #comparison_years_i1
-							) - (
-							SELECT TOP 1 period
-							FROM #comparison_years_start
-							)
-						) = 0
-					THEN 1
-				ELSE (
-						(
-							SELECT TOP 1 period
-							FROM #comparison_years_i1
-							) - (
-							SELECT TOP 1 period
-							FROM #comparison_years_start
-							)
-						)
-				END
-			) + (
-			SELECT TOP 1 ben_tt_comm
-			FROM multiyear_results
-			WHERE analysis_id = @analysis_id
-				AND period = mr.period - 1
-			),
-		ben_tt_truck = (
-			(
-				SELECT TOP 1 ben_tt_truck
-				FROM #comparison_years_i1
-				) - (
-				SELECT TOP 1 ben_tt_truck
-				FROM #comparison_years_start
-				)
-			) / (
-			CASE 
-				WHEN (
-						(
-							SELECT TOP 1 period
-							FROM #comparison_years_i1
-							) - (
-							SELECT TOP 1 period
-							FROM #comparison_years_start
-							)
-						) = 0
-					THEN 1
-				ELSE (
-						(
-							SELECT TOP 1 period
-							FROM #comparison_years_i1
-							) - (
-							SELECT TOP 1 period
-							FROM #comparison_years_start
-							)
-						)
-				END
-			) + (
-			SELECT TOP 1 ben_tt_truck
-			FROM multiyear_results
-			WHERE analysis_id = @analysis_id
-				AND period = mr.period - 1
-			),
-		ben_voc_auto = (
-			(
-				SELECT TOP 1 ben_voc_auto
-				FROM #comparison_years_i1
-				) - (
-				SELECT TOP 1 ben_voc_auto
-				FROM #comparison_years_start
-				)
-			) / (
-			CASE 
-				WHEN (
-						(
-							SELECT TOP 1 period
-							FROM #comparison_years_i1
-							) - (
-							SELECT TOP 1 period
-							FROM #comparison_years_start
-							)
-						) = 0
-					THEN 1
-				ELSE (
-						(
-							SELECT TOP 1 period
-							FROM #comparison_years_i1
-							) - (
-							SELECT TOP 1 period
-							FROM #comparison_years_start
-							)
-						)
-				END
-			) + (
-			SELECT TOP 1 ben_voc_auto
-			FROM multiyear_results
-			WHERE analysis_id = @analysis_id
-				AND period = mr.period - 1
-			),
-		ben_voc_truck_lht = (
-			(
-				SELECT TOP 1 ben_voc_truck_lht
-				FROM #comparison_years_i1
-				) - (
-				SELECT TOP 1 ben_voc_truck_lht
-				FROM #comparison_years_start
-				)
-			) / (
-			CASE 
-				WHEN (
-						(
-							SELECT TOP 1 period
-							FROM #comparison_years_i1
-							) - (
-							SELECT TOP 1 period
-							FROM #comparison_years_start
-							)
-						) = 0
-					THEN 1
-				ELSE (
-						(
-							SELECT TOP 1 period
-							FROM #comparison_years_i1
-							) - (
-							SELECT TOP 1 period
-							FROM #comparison_years_start
-							)
-						)
-				END
-			) + (
-			SELECT TOP 1 ben_voc_truck_lht
-			FROM multiyear_results
-			WHERE analysis_id = @analysis_id
-				AND period = mr.period - 1
-			),
-		ben_voc_truck_med = (
-			(
-				SELECT TOP 1 ben_voc_truck_med
-				FROM #comparison_years_i1
-				) - (
-				SELECT TOP 1 ben_voc_truck_med
-				FROM #comparison_years_start
-				)
-			) / (
-			CASE 
-				WHEN (
-						(
-							SELECT TOP 1 period
-							FROM #comparison_years_i1
-							) - (
-							SELECT TOP 1 period
-							FROM #comparison_years_start
-							)
-						) = 0
-					THEN 1
-				ELSE (
-						(
-							SELECT TOP 1 period
-							FROM #comparison_years_i1
-							) - (
-							SELECT TOP 1 period
-							FROM #comparison_years_start
-							)
-						)
-				END
-			) + (
-			SELECT TOP 1 ben_voc_truck_med
-			FROM multiyear_results
-			WHERE analysis_id = @analysis_id
-				AND period = mr.period - 1
-			),
-		ben_voc_truck_hvy = (
-			(
-				SELECT TOP 1 ben_voc_truck_hvy
-				FROM #comparison_years_i1
-				) - (
-				SELECT TOP 1 ben_voc_truck_hvy
-				FROM #comparison_years_start
-				)
-			) / (
-			CASE 
-				WHEN (
-						(
-							SELECT TOP 1 period
-							FROM #comparison_years_i1
-							) - (
-							SELECT TOP 1 period
-							FROM #comparison_years_start
-							)
-						) = 0
-					THEN 1
-				ELSE (
-						(
-							SELECT TOP 1 period
-							FROM #comparison_years_i1
-							) - (
-							SELECT TOP 1 period
-							FROM #comparison_years_start
-							)
-						)
-				END
-			) + (
-			SELECT TOP 1 ben_voc_truck_hvy
-			FROM multiyear_results
-			WHERE analysis_id = @analysis_id
-				AND period = mr.period - 1
-			),
-		toll_rev_base = (
+	SET ben_co									= 0,
+		ben_co2									= 0,
+		ben_nox									= 0,
+		ben_pm10								= 0,
+		ben_pm25								= 0,
+		ben_rogs								= 0,
+		ben_so2									= 0,
+		ben_autos_owned_coc						= 0,
+		ben_autos_owned							= 0,
+		ben_crashcost_fat						= 0,
+		ben_crashcost_inj						= 0,
+		ben_crashcost_pdo						= 0,
+		ben_persons_phys_active_coc				= 0,
+		ben_persons_phys_active					= 0,
+        ben_bike								= 0,
+        ben_bike_coc							= 0,
+        ben_walk								= 0,
+        ben_walk_coc							= 0,
+		ben_relcost_auto						= 0,
+		ben_relcost_truck_hvy					= 0,
+		ben_relcost_truck_lht					= 0,
+		ben_relcost_truck_med					= 0,
+		ben_tt_at_commute						= 0,
+		ben_tt_auto_commute						= 0,
+		ben_tt_transit_commute					= 0,
+		ben_tt_at_noncommute					= 0,
+		ben_tt_auto_noncommute					= 0,
+		ben_tt_transit_noncommute				= 0,
+		ben_tt_at_commute_coc					= 0,
+		ben_tt_auto_commute_coc					= 0,
+		ben_tt_transit_commute_coc				= 0,
+		ben_tt_at_noncommute_coc				= 0,
+		ben_tt_auto_noncommute_coc				= 0,
+		ben_tt_transit_noncommute_coc			= 0,
+		ben_tt_comm								= 0,
+		ben_tt_truck							= 0,
+		ben_voc_auto							= 0,
+		ben_voc_truck_lht						= 0,
+		ben_voc_truck_med						= 0,
+		ben_voc_truck_hvy						= 0,
+		toll_rev_base							= (
 			(
 				SELECT TOP 1 toll_rev_base
 				FROM #comparison_years_i1
@@ -1778,13 +419,13 @@ BEGIN
 			FROM multiyear_results
 			WHERE analysis_id = @analysis_id
 				AND period = mr.period - 1
-			),
-		toll_rev_build = (
+												),
+		toll_rev_build							= (
 			(
-				SELECT TOP 1 toll_rev_build
+				SELECT TOP 1 toll_rev_base
 				FROM #comparison_years_i1
 				) - (
-				SELECT TOP 1 toll_rev_build
+				SELECT TOP 1 toll_rev_base
 				FROM #comparison_years_start
 				)
 			) / (
@@ -1810,12 +451,12 @@ BEGIN
 						)
 				END
 			) + (
-			SELECT TOP 1 toll_rev_build
+			SELECT TOP 1 toll_rev_base
 			FROM multiyear_results
 			WHERE analysis_id = @analysis_id
 				AND period = mr.period - 1
-			),
-		fare_rev_base = (
+												),
+		fare_rev_base							= (
 			(
 				SELECT TOP 1 fare_rev_base
 				FROM #comparison_years_i1
@@ -1850,13 +491,13 @@ BEGIN
 			FROM multiyear_results
 			WHERE analysis_id = @analysis_id
 				AND period = mr.period - 1
-			),
-		fare_rev_build = (
+												),
+		fare_rev_build							= (
 			(
-				SELECT TOP 1 fare_rev_build
+				SELECT TOP 1 fare_rev_base
 				FROM #comparison_years_i1
 				) - (
-				SELECT TOP 1 fare_rev_build
+				SELECT TOP 1 fare_rev_base
 				FROM #comparison_years_start
 				)
 			) / (
@@ -1882,13 +523,13 @@ BEGIN
 						)
 				END
 			) + (
-			SELECT TOP 1 fare_rev_build
+			SELECT TOP 1 fare_rev_base
 			FROM multiyear_results
 			WHERE analysis_id = @analysis_id
 				AND period = mr.period - 1
-			),
+												),
 		-- totals_feature
-		base_tt_person = (
+		base_tt_person							= (
 			(
 				SELECT TOP 1 base_tt_person
 				FROM #comparison_years_i1
@@ -1923,13 +564,13 @@ BEGIN
 			FROM multiyear_results
 			WHERE analysis_id = @analysis_id
 				AND period = mr.period - 1
-			),
-		build_tt_person = (
+												),
+		build_tt_person							= (
 			(
-				SELECT TOP 1 build_tt_person
+				SELECT TOP 1 base_tt_person
 				FROM #comparison_years_i1
 				) - (
-				SELECT TOP 1 build_tt_person
+				SELECT TOP 1 base_tt_person
 				FROM #comparison_years_start
 				)
 			) / (
@@ -1955,12 +596,12 @@ BEGIN
 						)
 				END
 			) + (
-			SELECT TOP 1 build_tt_person
+			SELECT TOP 1 base_tt_person
 			FROM multiyear_results
 			WHERE analysis_id = @analysis_id
 				AND period = mr.period - 1
-			),
-		base_tt_truck_comm = (
+												),
+		base_tt_truck_comm						= (
 			(
 				SELECT TOP 1 base_tt_truck_comm
 				FROM #comparison_years_i1
@@ -1995,13 +636,13 @@ BEGIN
 			FROM multiyear_results
 			WHERE analysis_id = @analysis_id
 				AND period = mr.period - 1
-			), --added by JC 2010.10.20
-		build_tt_truck_comm = (
+												),
+		build_tt_truck_comm						= (
 			(
-				SELECT TOP 1 build_tt_truck_comm
+				SELECT TOP 1 base_tt_truck_comm
 				FROM #comparison_years_i1
 				) - (
-				SELECT TOP 1 build_tt_truck_comm
+				SELECT TOP 1 base_tt_truck_comm
 				FROM #comparison_years_start
 				)
 			) / (
@@ -2027,12 +668,12 @@ BEGIN
 						)
 				END
 			) + (
-			SELECT TOP 1 build_tt_truck_comm
+			SELECT TOP 1 base_tt_truck_comm
 			FROM multiyear_results
 			WHERE analysis_id = @analysis_id
 				AND period = mr.period - 1
-			), --added by JC 2010.10.20
-		ratio_tt_person = (
+												),
+		ratio_tt_person							= (
 			(
 				SELECT TOP 1 ratio_tt_person
 				FROM #comparison_years_i1
@@ -2067,8 +708,8 @@ BEGIN
 			FROM multiyear_results
 			WHERE analysis_id = @analysis_id
 				AND period = mr.period - 1
-			),
-		ratio_tt_truck_comm = (
+												),
+		ratio_tt_truck_comm						= (
 			(
 				SELECT TOP 1 ratio_tt_truck_comm
 				FROM #comparison_years_i1
@@ -2103,8 +744,8 @@ BEGIN
 			FROM multiyear_results
 			WHERE analysis_id = @analysis_id
 				AND period = mr.period - 1
-			),
-		base_rel_cost = (
+												),
+		base_rel_cost							= (
 			(
 				SELECT TOP 1 base_rel_cost
 				FROM #comparison_years_i1
@@ -2139,13 +780,13 @@ BEGIN
 			FROM multiyear_results
 			WHERE analysis_id = @analysis_id
 				AND period = mr.period - 1
-			),
-		build_rel_cost = (
+												),
+		build_rel_cost							= (
 			(
-				SELECT TOP 1 build_rel_cost
+				SELECT TOP 1 base_rel_cost
 				FROM #comparison_years_i1
 				) - (
-				SELECT TOP 1 build_rel_cost
+				SELECT TOP 1 base_rel_cost
 				FROM #comparison_years_start
 				)
 			) / (
@@ -2171,1101 +812,43 @@ BEGIN
 						)
 				END
 			) + (
-			SELECT TOP 1 build_rel_cost
+			SELECT TOP 1 base_rel_cost
 			FROM multiyear_results
 			WHERE analysis_id = @analysis_id
 				AND period = mr.period - 1
-			),
+												),
 		-- coc detail
-		ben_autos_owned_coc_race = (
-			(
-				SELECT TOP 1 ben_autos_owned_coc_race
-				FROM #comparison_years_i1
-				) - (
-				SELECT TOP 1 ben_autos_owned_coc_race
-				FROM #comparison_years_start
-				)
-			) / (
-			CASE 
-				WHEN (
-						(
-							SELECT TOP 1 period
-							FROM #comparison_years_i1
-							) - (
-							SELECT TOP 1 period
-							FROM #comparison_years_start
-							)
-						) = 0
-					THEN 1
-				ELSE (
-						(
-							SELECT TOP 1 period
-							FROM #comparison_years_i1
-							) - (
-							SELECT TOP 1 period
-							FROM #comparison_years_start
-							)
-						)
-				END
-			) + (
-			SELECT TOP 1 ben_autos_owned_coc_race
-			FROM multiyear_results
-			WHERE analysis_id = @analysis_id
-				AND period = mr.period - 1
-			),
-		ben_persons_phys_active_coc_race = (
-			(
-				SELECT TOP 1 ben_persons_phys_active_coc_race
-				FROM #comparison_years_i1
-				) - (
-				SELECT TOP 1 ben_persons_phys_active_coc_race
-				FROM #comparison_years_start
-				)
-			) / (
-			CASE 
-				WHEN (
-						(
-							SELECT TOP 1 period
-							FROM #comparison_years_i1
-							) - (
-							SELECT TOP 1 period
-							FROM #comparison_years_start
-							)
-						) = 0
-					THEN 1
-				ELSE (
-						(
-							SELECT TOP 1 period
-							FROM #comparison_years_i1
-							) - (
-							SELECT TOP 1 period
-							FROM #comparison_years_start
-							)
-						)
-				END
-			) + (
-			SELECT TOP 1 ben_persons_phys_active_coc_race
-			FROM multiyear_results
-			WHERE analysis_id = @analysis_id
-				AND period = mr.period - 1
-			),
-
-        ben_bike_coc_race = (
-			(
-				SELECT TOP 1 ben_bike_coc_race
-				FROM #comparison_years_i1
-				) - (
-				SELECT TOP 1 ben_bike_coc_race
-				FROM #comparison_years_start
-				)
-			) / (
-			CASE 
-				WHEN (
-						(
-							SELECT TOP 1 period
-							FROM #comparison_years_i1
-							) - (
-							SELECT TOP 1 period
-							FROM #comparison_years_start
-							)
-						) = 0
-					THEN 1
-				ELSE (
-						(
-							SELECT TOP 1 period
-							FROM #comparison_years_i1
-							) - (
-							SELECT TOP 1 period
-							FROM #comparison_years_start
-							)
-						)
-				END
-			) + (
-			SELECT TOP 1 ben_bike_coc_race
-			FROM multiyear_results
-			WHERE analysis_id = @analysis_id
-				AND period = mr.period - 1
-			),
-
-        ben_walk_coc_race = (
-			(
-				SELECT TOP 1 ben_walk_coc_race
-				FROM #comparison_years_i1
-				) - (
-				SELECT TOP 1 ben_walk_coc_race
-				FROM #comparison_years_start
-				)
-			) / (
-			CASE 
-				WHEN (
-						(
-							SELECT TOP 1 period
-							FROM #comparison_years_i1
-							) - (
-							SELECT TOP 1 period
-							FROM #comparison_years_start
-							)
-						) = 0
-					THEN 1
-				ELSE (
-						(
-							SELECT TOP 1 period
-							FROM #comparison_years_i1
-							) - (
-							SELECT TOP 1 period
-							FROM #comparison_years_start
-							)
-						)
-				END
-			) + (
-			SELECT TOP 1 ben_walk_coc_race
-			FROM multiyear_results
-			WHERE analysis_id = @analysis_id
-				AND period = mr.period - 1
-			),
-
-
-		ben_tt_at_commute_coc_race = (
-			(
-				SELECT TOP 1 ben_tt_at_commute_coc_race
-				FROM #comparison_years_i1
-				) - (
-				SELECT TOP 1 ben_tt_at_commute_coc_race
-				FROM #comparison_years_start
-				)
-			) / (
-			CASE 
-				WHEN (
-						(
-							SELECT TOP 1 period
-							FROM #comparison_years_i1
-							) - (
-							SELECT TOP 1 period
-							FROM #comparison_years_start
-							)
-						) = 0
-					THEN 1
-				ELSE (
-						(
-							SELECT TOP 1 period
-							FROM #comparison_years_i1
-							) - (
-							SELECT TOP 1 period
-							FROM #comparison_years_start
-							)
-						)
-				END
-			) + (
-			SELECT TOP 1 ben_tt_at_commute_coc_race
-			FROM multiyear_results
-			WHERE analysis_id = @analysis_id
-				AND period = mr.period - 1
-			),
-		ben_tt_auto_commute_coc_race = (
-			(
-				SELECT TOP 1 ben_tt_auto_commute_coc_race
-				FROM #comparison_years_i1
-				) - (
-				SELECT TOP 1 ben_tt_auto_commute_coc_race
-				FROM #comparison_years_start
-				)
-			) / (
-			CASE 
-				WHEN (
-						(
-							SELECT TOP 1 period
-							FROM #comparison_years_i1
-							) - (
-							SELECT TOP 1 period
-							FROM #comparison_years_start
-							)
-						) = 0
-					THEN 1
-				ELSE (
-						(
-							SELECT TOP 1 period
-							FROM #comparison_years_i1
-							) - (
-							SELECT TOP 1 period
-							FROM #comparison_years_start
-							)
-						)
-				END
-			) + (
-			SELECT TOP 1 ben_tt_auto_commute_coc_race
-			FROM multiyear_results
-			WHERE analysis_id = @analysis_id
-				AND period = mr.period - 1
-			),
-		ben_tt_transit_commute_coc_race = (
-			(
-				SELECT TOP 1 ben_tt_transit_commute_coc_race
-				FROM #comparison_years_i1
-				) - (
-				SELECT TOP 1 ben_tt_transit_commute_coc_race
-				FROM #comparison_years_start
-				)
-			) / (
-			CASE 
-				WHEN (
-						(
-							SELECT TOP 1 period
-							FROM #comparison_years_i1
-							) - (
-							SELECT TOP 1 period
-							FROM #comparison_years_start
-							)
-						) = 0
-					THEN 1
-				ELSE (
-						(
-							SELECT TOP 1 period
-							FROM #comparison_years_i1
-							) - (
-							SELECT TOP 1 period
-							FROM #comparison_years_start
-							)
-						)
-				END
-			) + (
-			SELECT TOP 1 ben_tt_transit_commute_coc_race
-			FROM multiyear_results
-			WHERE analysis_id = @analysis_id
-				AND period = mr.period - 1
-			),
-		ben_tt_at_noncommute_coc_race = (
-			(
-				SELECT TOP 1 ben_tt_at_noncommute_coc_race
-				FROM #comparison_years_i1
-				) - (
-				SELECT TOP 1 ben_tt_at_noncommute_coc_race
-				FROM #comparison_years_start
-				)
-			) / (
-			CASE 
-				WHEN (
-						(
-							SELECT TOP 1 period
-							FROM #comparison_years_i1
-							) - (
-							SELECT TOP 1 period
-							FROM #comparison_years_start
-							)
-						) = 0
-					THEN 1
-				ELSE (
-						(
-							SELECT TOP 1 period
-							FROM #comparison_years_i1
-							) - (
-							SELECT TOP 1 period
-							FROM #comparison_years_start
-							)
-						)
-				END
-			) + (
-			SELECT TOP 1 ben_tt_at_noncommute_coc_race
-			FROM multiyear_results
-			WHERE analysis_id = @analysis_id
-				AND period = mr.period - 1
-			),
-		ben_tt_auto_noncommute_coc_race = (
-			(
-				SELECT TOP 1 ben_tt_auto_noncommute_coc_race
-				FROM #comparison_years_i1
-				) - (
-				SELECT TOP 1 ben_tt_auto_noncommute_coc_race
-				FROM #comparison_years_start
-				)
-			) / (
-			CASE 
-				WHEN (
-						(
-							SELECT TOP 1 period
-							FROM #comparison_years_i1
-							) - (
-							SELECT TOP 1 period
-							FROM #comparison_years_start
-							)
-						) = 0
-					THEN 1
-				ELSE (
-						(
-							SELECT TOP 1 period
-							FROM #comparison_years_i1
-							) - (
-							SELECT TOP 1 period
-							FROM #comparison_years_start
-							)
-						)
-				END
-			) + (
-			SELECT TOP 1 ben_tt_auto_noncommute_coc_race
-			FROM multiyear_results
-			WHERE analysis_id = @analysis_id
-				AND period = mr.period - 1
-			),
-		ben_tt_transit_noncommute_coc_race = (
-			(
-				SELECT TOP 1 ben_tt_transit_noncommute_coc_race
-				FROM #comparison_years_i1
-				) - (
-				SELECT TOP 1 ben_tt_transit_noncommute_coc_race
-				FROM #comparison_years_start
-				)
-			) / (
-			CASE 
-				WHEN (
-						(
-							SELECT TOP 1 period
-							FROM #comparison_years_i1
-							) - (
-							SELECT TOP 1 period
-							FROM #comparison_years_start
-							)
-						) = 0
-					THEN 1
-				ELSE (
-						(
-							SELECT TOP 1 period
-							FROM #comparison_years_i1
-							) - (
-							SELECT TOP 1 period
-							FROM #comparison_years_start
-							)
-						)
-				END
-			) + (
-			SELECT TOP 1 ben_tt_transit_noncommute_coc_race
-			FROM multiyear_results
-			WHERE analysis_id = @analysis_id
-				AND period = mr.period - 1
-			),
-		ben_autos_owned_coc_age = (
-			(
-				SELECT TOP 1 ben_autos_owned_coc_age
-				FROM #comparison_years_i1
-				) - (
-				SELECT TOP 1 ben_autos_owned_coc_age
-				FROM #comparison_years_start
-				)
-			) / (
-			CASE 
-				WHEN (
-						(
-							SELECT TOP 1 period
-							FROM #comparison_years_i1
-							) - (
-							SELECT TOP 1 period
-							FROM #comparison_years_start
-							)
-						) = 0
-					THEN 1
-				ELSE (
-						(
-							SELECT TOP 1 period
-							FROM #comparison_years_i1
-							) - (
-							SELECT TOP 1 period
-							FROM #comparison_years_start
-							)
-						)
-				END
-			) + (
-			SELECT TOP 1 ben_autos_owned_coc_age
-			FROM multiyear_results
-			WHERE analysis_id = @analysis_id
-				AND period = mr.period - 1
-			),
-		ben_persons_phys_active_coc_age = (
-			(
-				SELECT TOP 1 ben_persons_phys_active_coc_age
-				FROM #comparison_years_i1
-				) - (
-				SELECT TOP 1 ben_persons_phys_active_coc_age
-				FROM #comparison_years_start
-				)
-			) / (
-			CASE 
-				WHEN (
-						(
-							SELECT TOP 1 period
-							FROM #comparison_years_i1
-							) - (
-							SELECT TOP 1 period
-							FROM #comparison_years_start
-							)
-						) = 0
-					THEN 1
-				ELSE (
-						(
-							SELECT TOP 1 period
-							FROM #comparison_years_i1
-							) - (
-							SELECT TOP 1 period
-							FROM #comparison_years_start
-							)
-						)
-				END
-			) + (
-			SELECT TOP 1 ben_persons_phys_active_coc_age
-			FROM multiyear_results
-			WHERE analysis_id = @analysis_id
-				AND period = mr.period - 1
-			),
-
-        ben_bike_coc_age = (
-			(
-				SELECT TOP 1 ben_bike_coc_age
-				FROM #comparison_years_i1
-				) - (
-				SELECT TOP 1 ben_bike_coc_age
-				FROM #comparison_years_start
-				)
-			) / (
-			CASE 
-				WHEN (
-						(
-							SELECT TOP 1 period
-							FROM #comparison_years_i1
-							) - (
-							SELECT TOP 1 period
-							FROM #comparison_years_start
-							)
-						) = 0
-					THEN 1
-				ELSE (
-						(
-							SELECT TOP 1 period
-							FROM #comparison_years_i1
-							) - (
-							SELECT TOP 1 period
-							FROM #comparison_years_start
-							)
-						)
-				END
-			) + (
-			SELECT TOP 1 ben_bike_coc_age
-			FROM multiyear_results
-			WHERE analysis_id = @analysis_id
-				AND period = mr.period - 1
-			),
-        ben_walk_coc_age = (
-			(
-				SELECT TOP 1 ben_walk_coc_age
-				FROM #comparison_years_i1
-				) - (
-				SELECT TOP 1 ben_walk_coc_age
-				FROM #comparison_years_start
-				)
-			) / (
-			CASE 
-				WHEN (
-						(
-							SELECT TOP 1 period
-							FROM #comparison_years_i1
-							) - (
-							SELECT TOP 1 period
-							FROM #comparison_years_start
-							)
-						) = 0
-					THEN 1
-				ELSE (
-						(
-							SELECT TOP 1 period
-							FROM #comparison_years_i1
-							) - (
-							SELECT TOP 1 period
-							FROM #comparison_years_start
-							)
-						)
-				END
-			) + (
-			SELECT TOP 1 ben_walk_coc_age
-			FROM multiyear_results
-			WHERE analysis_id = @analysis_id
-				AND period = mr.period - 1
-			),
-
-		ben_tt_at_commute_coc_age = (
-			(
-				SELECT TOP 1 ben_tt_at_commute_coc_age
-				FROM #comparison_years_i1
-				) - (
-				SELECT TOP 1 ben_tt_at_commute_coc_age
-				FROM #comparison_years_start
-				)
-			) / (
-			CASE 
-				WHEN (
-						(
-							SELECT TOP 1 period
-							FROM #comparison_years_i1
-							) - (
-							SELECT TOP 1 period
-							FROM #comparison_years_start
-							)
-						) = 0
-					THEN 1
-				ELSE (
-						(
-							SELECT TOP 1 period
-							FROM #comparison_years_i1
-							) - (
-							SELECT TOP 1 period
-							FROM #comparison_years_start
-							)
-						)
-				END
-			) + (
-			SELECT TOP 1 ben_tt_at_commute_coc_age
-			FROM multiyear_results
-			WHERE analysis_id = @analysis_id
-				AND period = mr.period - 1
-			),
-		ben_tt_auto_commute_coc_age = (
-			(
-				SELECT TOP 1 ben_tt_auto_commute_coc_age
-				FROM #comparison_years_i1
-				) - (
-				SELECT TOP 1 ben_tt_auto_commute_coc_age
-				FROM #comparison_years_start
-				)
-			) / (
-			CASE 
-				WHEN (
-						(
-							SELECT TOP 1 period
-							FROM #comparison_years_i1
-							) - (
-							SELECT TOP 1 period
-							FROM #comparison_years_start
-							)
-						) = 0
-					THEN 1
-				ELSE (
-						(
-							SELECT TOP 1 period
-							FROM #comparison_years_i1
-							) - (
-							SELECT TOP 1 period
-							FROM #comparison_years_start
-							)
-						)
-				END
-			) + (
-			SELECT TOP 1 ben_tt_auto_commute_coc_age
-			FROM multiyear_results
-			WHERE analysis_id = @analysis_id
-				AND period = mr.period - 1
-			),
-		ben_tt_transit_commute_coc_age = (
-			(
-				SELECT TOP 1 ben_tt_transit_commute_coc_age
-				FROM #comparison_years_i1
-				) - (
-				SELECT TOP 1 ben_tt_transit_commute_coc_age
-				FROM #comparison_years_start
-				)
-			) / (
-			CASE 
-				WHEN (
-						(
-							SELECT TOP 1 period
-							FROM #comparison_years_i1
-							) - (
-							SELECT TOP 1 period
-							FROM #comparison_years_start
-							)
-						) = 0
-					THEN 1
-				ELSE (
-						(
-							SELECT TOP 1 period
-							FROM #comparison_years_i1
-							) - (
-							SELECT TOP 1 period
-							FROM #comparison_years_start
-							)
-						)
-				END
-			) + (
-			SELECT TOP 1 ben_tt_transit_commute_coc_age
-			FROM multiyear_results
-			WHERE analysis_id = @analysis_id
-				AND period = mr.period - 1
-			),
-		ben_tt_at_noncommute_coc_age = (
-			(
-				SELECT TOP 1 ben_tt_at_noncommute_coc_age
-				FROM #comparison_years_i1
-				) - (
-				SELECT TOP 1 ben_tt_at_noncommute_coc_age
-				FROM #comparison_years_start
-				)
-			) / (
-			CASE 
-				WHEN (
-						(
-							SELECT TOP 1 period
-							FROM #comparison_years_i1
-							) - (
-							SELECT TOP 1 period
-							FROM #comparison_years_start
-							)
-						) = 0
-					THEN 1
-				ELSE (
-						(
-							SELECT TOP 1 period
-							FROM #comparison_years_i1
-							) - (
-							SELECT TOP 1 period
-							FROM #comparison_years_start
-							)
-						)
-				END
-			) + (
-			SELECT TOP 1 ben_tt_at_noncommute_coc_age
-			FROM multiyear_results
-			WHERE analysis_id = @analysis_id
-				AND period = mr.period - 1
-			),
-		ben_tt_auto_noncommute_coc_age = (
-			(
-				SELECT TOP 1 ben_tt_auto_noncommute_coc_age
-				FROM #comparison_years_i1
-				) - (
-				SELECT TOP 1 ben_tt_auto_noncommute_coc_age
-				FROM #comparison_years_start
-				)
-			) / (
-			CASE 
-				WHEN (
-						(
-							SELECT TOP 1 period
-							FROM #comparison_years_i1
-							) - (
-							SELECT TOP 1 period
-							FROM #comparison_years_start
-							)
-						) = 0
-					THEN 1
-				ELSE (
-						(
-							SELECT TOP 1 period
-							FROM #comparison_years_i1
-							) - (
-							SELECT TOP 1 period
-							FROM #comparison_years_start
-							)
-						)
-				END
-			) + (
-			SELECT TOP 1 ben_tt_auto_noncommute_coc_age
-			FROM multiyear_results
-			WHERE analysis_id = @analysis_id
-				AND period = mr.period - 1
-			),
-		ben_tt_transit_noncommute_coc_age = (
-			(
-				SELECT TOP 1 ben_tt_transit_noncommute_coc_age
-				FROM #comparison_years_i1
-				) - (
-				SELECT TOP 1 ben_tt_transit_noncommute_coc_age
-				FROM #comparison_years_start
-				)
-			) / (
-			CASE 
-				WHEN (
-						(
-							SELECT TOP 1 period
-							FROM #comparison_years_i1
-							) - (
-							SELECT TOP 1 period
-							FROM #comparison_years_start
-							)
-						) = 0
-					THEN 1
-				ELSE (
-						(
-							SELECT TOP 1 period
-							FROM #comparison_years_i1
-							) - (
-							SELECT TOP 1 period
-							FROM #comparison_years_start
-							)
-						)
-				END
-			) + (
-			SELECT TOP 1 ben_tt_transit_noncommute_coc_age
-			FROM multiyear_results
-			WHERE analysis_id = @analysis_id
-				AND period = mr.period - 1
-			),
-		ben_autos_owned_coc_poverty = (
-			(
-				SELECT TOP 1 ben_autos_owned_coc_poverty
-				FROM #comparison_years_i1
-				) - (
-				SELECT TOP 1 ben_autos_owned_coc_poverty
-				FROM #comparison_years_start
-				)
-			) / (
-			CASE 
-				WHEN (
-						(
-							SELECT TOP 1 period
-							FROM #comparison_years_i1
-							) - (
-							SELECT TOP 1 period
-							FROM #comparison_years_start
-							)
-						) = 0
-					THEN 1
-				ELSE (
-						(
-							SELECT TOP 1 period
-							FROM #comparison_years_i1
-							) - (
-							SELECT TOP 1 period
-							FROM #comparison_years_start
-							)
-						)
-				END
-			) + (
-			SELECT TOP 1 ben_autos_owned_coc_poverty
-			FROM multiyear_results
-			WHERE analysis_id = @analysis_id
-				AND period = mr.period - 1
-			),
-		ben_persons_phys_active_coc_poverty = (
-			(
-				SELECT TOP 1 ben_persons_phys_active_coc_poverty
-				FROM #comparison_years_i1
-				) - (
-				SELECT TOP 1 ben_persons_phys_active_coc_poverty
-				FROM #comparison_years_start
-				)
-			) / (
-			CASE 
-				WHEN (
-						(
-							SELECT TOP 1 period
-							FROM #comparison_years_i1
-							) - (
-							SELECT TOP 1 period
-							FROM #comparison_years_start
-							)
-						) = 0
-					THEN 1
-				ELSE (
-						(
-							SELECT TOP 1 period
-							FROM #comparison_years_i1
-							) - (
-							SELECT TOP 1 period
-							FROM #comparison_years_start
-							)
-						)
-				END
-			) + (
-			SELECT TOP 1 ben_persons_phys_active_coc_poverty
-			FROM multiyear_results
-			WHERE analysis_id = @analysis_id
-				AND period = mr.period - 1
-			),
-
-        ben_bike_coc_poverty = (
-			(
-				SELECT TOP 1 ben_bike_coc_poverty
-				FROM #comparison_years_i1
-				) - (
-				SELECT TOP 1 ben_bike_coc_poverty
-				FROM #comparison_years_start
-				)
-			) / (
-			CASE 
-				WHEN (
-						(
-							SELECT TOP 1 period
-							FROM #comparison_years_i1
-							) - (
-							SELECT TOP 1 period
-							FROM #comparison_years_start
-							)
-						) = 0
-					THEN 1
-				ELSE (
-						(
-							SELECT TOP 1 period
-							FROM #comparison_years_i1
-							) - (
-							SELECT TOP 1 period
-							FROM #comparison_years_start
-							)
-						)
-				END
-			) + (
-			SELECT TOP 1 ben_bike_coc_poverty
-			FROM multiyear_results
-			WHERE analysis_id = @analysis_id
-				AND period = mr.period - 1
-			),
-        ben_walk_coc_poverty = (
-			(
-				SELECT TOP 1 ben_walk_coc_poverty
-				FROM #comparison_years_i1
-				) - (
-				SELECT TOP 1 ben_walk_coc_poverty
-				FROM #comparison_years_start
-				)
-			) / (
-			CASE 
-				WHEN (
-						(
-							SELECT TOP 1 period
-							FROM #comparison_years_i1
-							) - (
-							SELECT TOP 1 period
-							FROM #comparison_years_start
-							)
-						) = 0
-					THEN 1
-				ELSE (
-						(
-							SELECT TOP 1 period
-							FROM #comparison_years_i1
-							) - (
-							SELECT TOP 1 period
-							FROM #comparison_years_start
-							)
-						)
-				END
-			) + (
-			SELECT TOP 1 ben_walk_coc_poverty
-			FROM multiyear_results
-			WHERE analysis_id = @analysis_id
-				AND period = mr.period - 1
-			),
-
-		ben_tt_at_commute_coc_poverty = (
-			(
-				SELECT TOP 1 ben_tt_at_commute_coc_poverty
-				FROM #comparison_years_i1
-				) - (
-				SELECT TOP 1 ben_tt_at_commute_coc_poverty
-				FROM #comparison_years_start
-				)
-			) / (
-			CASE 
-				WHEN (
-						(
-							SELECT TOP 1 period
-							FROM #comparison_years_i1
-							) - (
-							SELECT TOP 1 period
-							FROM #comparison_years_start
-							)
-						) = 0
-					THEN 1
-				ELSE (
-						(
-							SELECT TOP 1 period
-							FROM #comparison_years_i1
-							) - (
-							SELECT TOP 1 period
-							FROM #comparison_years_start
-							)
-						)
-				END
-			) + (
-			SELECT TOP 1 ben_tt_at_commute_coc_poverty
-			FROM multiyear_results
-			WHERE analysis_id = @analysis_id
-				AND period = mr.period - 1
-			),
-		ben_tt_auto_commute_coc_poverty = (
-			(
-				SELECT TOP 1 ben_tt_auto_commute_coc_poverty
-				FROM #comparison_years_i1
-				) - (
-				SELECT TOP 1 ben_tt_auto_commute_coc_poverty
-				FROM #comparison_years_start
-				)
-			) / (
-			CASE 
-				WHEN (
-						(
-							SELECT TOP 1 period
-							FROM #comparison_years_i1
-							) - (
-							SELECT TOP 1 period
-							FROM #comparison_years_start
-							)
-						) = 0
-					THEN 1
-				ELSE (
-						(
-							SELECT TOP 1 period
-							FROM #comparison_years_i1
-							) - (
-							SELECT TOP 1 period
-							FROM #comparison_years_start
-							)
-						)
-				END
-			) + (
-			SELECT TOP 1 ben_tt_auto_commute_coc_poverty
-			FROM multiyear_results
-			WHERE analysis_id = @analysis_id
-				AND period = mr.period - 1
-			),
-		ben_tt_transit_commute_coc_poverty = (
-			(
-				SELECT TOP 1 ben_tt_transit_commute_coc_poverty
-				FROM #comparison_years_i1
-				) - (
-				SELECT TOP 1 ben_tt_transit_commute_coc_poverty
-				FROM #comparison_years_start
-				)
-			) / (
-			CASE 
-				WHEN (
-						(
-							SELECT TOP 1 period
-							FROM #comparison_years_i1
-							) - (
-							SELECT TOP 1 period
-							FROM #comparison_years_start
-							)
-						) = 0
-					THEN 1
-				ELSE (
-						(
-							SELECT TOP 1 period
-							FROM #comparison_years_i1
-							) - (
-							SELECT TOP 1 period
-							FROM #comparison_years_start
-							)
-						)
-				END
-			) + (
-			SELECT TOP 1 ben_tt_transit_commute_coc_poverty
-			FROM multiyear_results
-			WHERE analysis_id = @analysis_id
-				AND period = mr.period - 1
-			),
-		ben_tt_at_noncommute_coc_poverty = (
-			(
-				SELECT TOP 1 ben_tt_at_noncommute_coc_poverty
-				FROM #comparison_years_i1
-				) - (
-				SELECT TOP 1 ben_tt_at_noncommute_coc_poverty
-				FROM #comparison_years_start
-				)
-			) / (
-			CASE 
-				WHEN (
-						(
-							SELECT TOP 1 period
-							FROM #comparison_years_i1
-							) - (
-							SELECT TOP 1 period
-							FROM #comparison_years_start
-							)
-						) = 0
-					THEN 1
-				ELSE (
-						(
-							SELECT TOP 1 period
-							FROM #comparison_years_i1
-							) - (
-							SELECT TOP 1 period
-							FROM #comparison_years_start
-							)
-						)
-				END
-			) + (
-			SELECT TOP 1 ben_tt_at_noncommute_coc_poverty
-			FROM multiyear_results
-			WHERE analysis_id = @analysis_id
-				AND period = mr.period - 1
-			),
-		ben_tt_auto_noncommute_coc_poverty = (
-			(
-				SELECT TOP 1 ben_tt_auto_noncommute_coc_poverty
-				FROM #comparison_years_i1
-				) - (
-				SELECT TOP 1 ben_tt_auto_noncommute_coc_poverty
-				FROM #comparison_years_start
-				)
-			) / (
-			CASE 
-				WHEN (
-						(
-							SELECT TOP 1 period
-							FROM #comparison_years_i1
-							) - (
-							SELECT TOP 1 period
-							FROM #comparison_years_start
-							)
-						) = 0
-					THEN 1
-				ELSE (
-						(
-							SELECT TOP 1 period
-							FROM #comparison_years_i1
-							) - (
-							SELECT TOP 1 period
-							FROM #comparison_years_start
-							)
-						)
-				END
-			) + (
-			SELECT TOP 1 ben_tt_auto_noncommute_coc_poverty
-			FROM multiyear_results
-			WHERE analysis_id = @analysis_id
-				AND period = mr.period - 1
-			),
-		ben_tt_transit_noncommute_coc_poverty = (
-			(
-				SELECT TOP 1 ben_tt_transit_noncommute_coc_poverty
-				FROM #comparison_years_i1
-				) - (
-				SELECT TOP 1 ben_tt_transit_noncommute_coc_poverty
-				FROM #comparison_years_start
-				)
-			) / (
-			CASE 
-				WHEN (
-						(
-							SELECT TOP 1 period
-							FROM #comparison_years_i1
-							) - (
-							SELECT TOP 1 period
-							FROM #comparison_years_start
-							)
-						) = 0
-					THEN 1
-				ELSE (
-						(
-							SELECT TOP 1 period
-							FROM #comparison_years_i1
-							) - (
-							SELECT TOP 1 period
-							FROM #comparison_years_start
-							)
-						)
-				END
-			) + (
-			SELECT TOP 1 ben_tt_transit_noncommute_coc_poverty
-			FROM multiyear_results
-			WHERE analysis_id = @analysis_id
-				AND period = mr.period - 1
-			),
-		persons = (
+		ben_autos_owned_coc_race				= 0,
+		ben_persons_phys_active_coc_race		= 0,
+        ben_bike_coc_race						= 0,
+        ben_walk_coc_race						= 0,
+		ben_tt_at_commute_coc_race				= 0,
+		ben_tt_auto_commute_coc_race			= 0,
+		ben_tt_transit_commute_coc_race			= 0,
+		ben_tt_at_noncommute_coc_race			= 0,
+		ben_tt_auto_noncommute_coc_race			= 0,
+		ben_tt_transit_noncommute_coc_race		= 0,
+		ben_autos_owned_coc_age					= 0,
+		ben_persons_phys_active_coc_age			= 0,
+        ben_bike_coc_age						= 0,
+        ben_walk_coc_age						= 0,
+		ben_tt_at_commute_coc_age				= 0,
+		ben_tt_auto_commute_coc_age				= 0,
+		ben_tt_transit_commute_coc_age			= 0,
+		ben_tt_at_noncommute_coc_age			= 0,
+		ben_tt_auto_noncommute_coc_age			= 0,
+		ben_tt_transit_noncommute_coc_age		= 0,
+		ben_autos_owned_coc_poverty				= 0,
+		ben_persons_phys_active_coc_poverty		= 0,
+        ben_bike_coc_poverty					= 0,
+        ben_walk_coc_poverty					= 0,
+		ben_tt_at_commute_coc_poverty			= 0,
+		ben_tt_auto_commute_coc_poverty			= 0,
+		ben_tt_transit_commute_coc_poverty		= 0,
+		ben_tt_at_noncommute_coc_poverty		= 0,
+		ben_tt_auto_noncommute_coc_poverty		= 0,
+		ben_tt_transit_noncommute_coc_poverty	= 0,
+		persons									= (
 			(
 				SELECT TOP 1 persons
 				FROM #comparison_years_i1
@@ -3300,8 +883,8 @@ BEGIN
 			FROM multiyear_results
 			WHERE analysis_id = @analysis_id
 				AND period = mr.period - 1
-			),
-		persons_coc = (
+												),
+		persons_coc								= (
 			(
 				SELECT TOP 1 persons_coc
 				FROM #comparison_years_i1
@@ -3336,8 +919,8 @@ BEGIN
 			FROM multiyear_results
 			WHERE analysis_id = @analysis_id
 				AND period = mr.period - 1
-			),
-		persons_coc_race = (
+												),
+		persons_coc_race						= (
 			(
 				SELECT TOP 1 persons_coc_race
 				FROM #comparison_years_i1
@@ -3372,8 +955,8 @@ BEGIN
 			FROM multiyear_results
 			WHERE analysis_id = @analysis_id
 				AND period = mr.period - 1
-			),
-		persons_coc_age = (
+												),
+		persons_coc_age							= (
 			(
 				SELECT TOP 1 persons_coc_age
 				FROM #comparison_years_i1
@@ -3408,8 +991,8 @@ BEGIN
 			FROM multiyear_results
 			WHERE analysis_id = @analysis_id
 				AND period = mr.period - 1
-			),
-		persons_coc_poverty = (
+												),
+		persons_coc_poverty						= (
 			(
 				SELECT TOP 1 persons_coc_poverty
 				FROM #comparison_years_i1
@@ -3436,6 +1019,3173 @@ BEGIN
 							) - (
 							SELECT TOP 1 period
 							FROM #comparison_years_start
+							)
+						)
+				END
+			) + (
+			SELECT TOP 1 persons_coc_poverty
+			FROM multiyear_results
+			WHERE analysis_id = @analysis_id
+				AND period = mr.period - 1
+												)
+
+	FROM multiyear_results mr
+	WHERE mr.analysis_id = @analysis_id
+		AND mr.comparison_year = @current_year;
+
+	SET @current_year += 1;
+END;
+
+SET @current_year = (
+		SELECT TOP 1 comparison_year
+		FROM #comparison_years_i0
+		) + 1;
+
+WHILE @current_year < (
+		SELECT TOP 1 comparison_year
+		FROM #comparison_years_i1
+		)
+BEGIN
+	UPDATE multiyear_results
+	SET ben_co = (
+			(
+				SELECT TOP 1 ben_co
+				FROM #comparison_years_i1
+				) - (
+				SELECT TOP 1 ben_co
+				FROM #comparison_years_i0
+				)
+			) / (
+			CASE 
+				WHEN (
+						(
+							SELECT TOP 1 period
+							FROM #comparison_years_i1
+							) - (
+							SELECT TOP 1 period
+							FROM #comparison_years_i0
+							)
+						) = 0
+					THEN 1
+				ELSE (
+						(
+							SELECT TOP 1 period
+							FROM #comparison_years_i1
+							) - (
+							SELECT TOP 1 period
+							FROM #comparison_years_i0
+							)
+						)
+				END
+			) + (
+			SELECT TOP 1 ben_co
+			FROM multiyear_results
+			WHERE analysis_id = @analysis_id
+				AND period = mr.period - 1
+			),
+		ben_co2 = (
+			(
+				SELECT TOP 1 ben_co2
+				FROM #comparison_years_i1
+				) - (
+				SELECT TOP 1 ben_co2
+				FROM #comparison_years_i0
+				)
+			) / (
+			CASE 
+				WHEN (
+						(
+							SELECT TOP 1 period
+							FROM #comparison_years_i1
+							) - (
+							SELECT TOP 1 period
+							FROM #comparison_years_i0
+							)
+						) = 0
+					THEN 1
+				ELSE (
+						(
+							SELECT TOP 1 period
+							FROM #comparison_years_i1
+							) - (
+							SELECT TOP 1 period
+							FROM #comparison_years_i0
+							)
+						)
+				END
+			) + (
+			SELECT TOP 1 ben_co2
+			FROM multiyear_results
+			WHERE analysis_id = @analysis_id
+				AND period = mr.period - 1
+			),
+		ben_nox = (
+			(
+				SELECT TOP 1 ben_nox
+				FROM #comparison_years_i1
+				) - (
+				SELECT TOP 1 ben_nox
+				FROM #comparison_years_i0
+				)
+			) / (
+			CASE 
+				WHEN (
+						(
+							SELECT TOP 1 period
+							FROM #comparison_years_i1
+							) - (
+							SELECT TOP 1 period
+							FROM #comparison_years_i0
+							)
+						) = 0
+					THEN 1
+				ELSE (
+						(
+							SELECT TOP 1 period
+							FROM #comparison_years_i1
+							) - (
+							SELECT TOP 1 period
+							FROM #comparison_years_i0
+							)
+						)
+				END
+			) + (
+			SELECT TOP 1 ben_nox
+			FROM multiyear_results
+			WHERE analysis_id = @analysis_id
+				AND period = mr.period - 1
+			),
+		ben_pm10 = (
+			(
+				SELECT TOP 1 ben_pm10
+				FROM #comparison_years_i1
+				) - (
+				SELECT TOP 1 ben_pm10
+				FROM #comparison_years_i0
+				)
+			) / (
+			CASE 
+				WHEN (
+						(
+							SELECT TOP 1 period
+							FROM #comparison_years_i1
+							) - (
+							SELECT TOP 1 period
+							FROM #comparison_years_i0
+							)
+						) = 0
+					THEN 1
+				ELSE (
+						(
+							SELECT TOP 1 period
+							FROM #comparison_years_i1
+							) - (
+							SELECT TOP 1 period
+							FROM #comparison_years_i0
+							)
+						)
+				END
+			) + (
+			SELECT TOP 1 ben_pm10
+			FROM multiyear_results
+			WHERE analysis_id = @analysis_id
+				AND period = mr.period - 1
+			),
+		ben_pm25 = (
+			(
+				SELECT TOP 1 ben_pm25
+				FROM #comparison_years_i1
+				) - (
+				SELECT TOP 1 ben_pm25
+				FROM #comparison_years_i0
+				)
+			) / (
+			CASE 
+				WHEN (
+						(
+							SELECT TOP 1 period
+							FROM #comparison_years_i1
+							) - (
+							SELECT TOP 1 period
+							FROM #comparison_years_i0
+							)
+						) = 0
+					THEN 1
+				ELSE (
+						(
+							SELECT TOP 1 period
+							FROM #comparison_years_i1
+							) - (
+							SELECT TOP 1 period
+							FROM #comparison_years_i0
+							)
+						)
+				END
+			) + (
+			SELECT TOP 1 ben_pm25
+			FROM multiyear_results
+			WHERE analysis_id = @analysis_id
+				AND period = mr.period - 1
+			),
+		ben_rogs = (
+			(
+				SELECT TOP 1 ben_rogs
+				FROM #comparison_years_i1
+				) - (
+				SELECT TOP 1 ben_rogs
+				FROM #comparison_years_i0
+				)
+			) / (
+			CASE 
+				WHEN (
+						(
+							SELECT TOP 1 period
+							FROM #comparison_years_i1
+							) - (
+							SELECT TOP 1 period
+							FROM #comparison_years_i0
+							)
+						) = 0
+					THEN 1
+				ELSE (
+						(
+							SELECT TOP 1 period
+							FROM #comparison_years_i1
+							) - (
+							SELECT TOP 1 period
+							FROM #comparison_years_i0
+							)
+						)
+				END
+			) + (
+			SELECT TOP 1 ben_rogs
+			FROM multiyear_results
+			WHERE analysis_id = @analysis_id
+				AND period = mr.period - 1
+			),
+		ben_so2 = (
+			(
+				SELECT TOP 1 ben_so2
+				FROM #comparison_years_i1
+				) - (
+				SELECT TOP 1 ben_so2
+				FROM #comparison_years_i0
+				)
+			) / (
+			CASE 
+				WHEN (
+						(
+							SELECT TOP 1 period
+							FROM #comparison_years_i1
+							) - (
+							SELECT TOP 1 period
+							FROM #comparison_years_i0
+							)
+						) = 0
+					THEN 1
+				ELSE (
+						(
+							SELECT TOP 1 period
+							FROM #comparison_years_i1
+							) - (
+							SELECT TOP 1 period
+							FROM #comparison_years_i0
+							)
+						)
+				END
+			) + (
+			SELECT TOP 1 ben_so2
+			FROM multiyear_results
+			WHERE analysis_id = @analysis_id
+				AND period = mr.period - 1
+			),
+		ben_autos_owned_coc = (
+			(
+				SELECT TOP 1 ben_autos_owned_coc
+				FROM #comparison_years_i1
+				) - (
+				SELECT TOP 1 ben_autos_owned_coc
+				FROM #comparison_years_i0
+				)
+			) / (
+			CASE 
+				WHEN (
+						(
+							SELECT TOP 1 period
+							FROM #comparison_years_i1
+							) - (
+							SELECT TOP 1 period
+							FROM #comparison_years_i0
+							)
+						) = 0
+					THEN 1
+				ELSE (
+						(
+							SELECT TOP 1 period
+							FROM #comparison_years_i1
+							) - (
+							SELECT TOP 1 period
+							FROM #comparison_years_i0
+							)
+						)
+				END
+			) + (
+			SELECT TOP 1 ben_autos_owned_coc
+			FROM multiyear_results
+			WHERE analysis_id = @analysis_id
+				AND period = mr.period - 1
+			),
+		ben_autos_owned = (
+			(
+				SELECT TOP 1 ben_autos_owned
+				FROM #comparison_years_i1
+				) - (
+				SELECT TOP 1 ben_autos_owned
+				FROM #comparison_years_i0
+				)
+			) / (
+			CASE 
+				WHEN (
+						(
+							SELECT TOP 1 period
+							FROM #comparison_years_i1
+							) - (
+							SELECT TOP 1 period
+							FROM #comparison_years_i0
+							)
+						) = 0
+					THEN 1
+				ELSE (
+						(
+							SELECT TOP 1 period
+							FROM #comparison_years_i1
+							) - (
+							SELECT TOP 1 period
+							FROM #comparison_years_i0
+							)
+						)
+				END
+			) + (
+			SELECT TOP 1 ben_autos_owned
+			FROM multiyear_results
+			WHERE analysis_id = @analysis_id
+				AND period = mr.period - 1
+			),
+		ben_crashcost_fat = (
+			(
+				SELECT TOP 1 ben_crashcost_fat
+				FROM #comparison_years_i1
+				) - (
+				SELECT TOP 1 ben_crashcost_fat
+				FROM #comparison_years_i0
+				)
+			) / (
+			CASE 
+				WHEN (
+						(
+							SELECT TOP 1 period
+							FROM #comparison_years_i1
+							) - (
+							SELECT TOP 1 period
+							FROM #comparison_years_i0
+							)
+						) = 0
+					THEN 1
+				ELSE (
+						(
+							SELECT TOP 1 period
+							FROM #comparison_years_i1
+							) - (
+							SELECT TOP 1 period
+							FROM #comparison_years_i0
+							)
+						)
+				END
+			) + (
+			SELECT TOP 1 ben_crashcost_fat
+			FROM multiyear_results
+			WHERE analysis_id = @analysis_id
+				AND period = mr.period - 1
+			),
+		ben_crashcost_inj = (
+			(
+				SELECT TOP 1 ben_crashcost_inj
+				FROM #comparison_years_i1
+				) - (
+				SELECT TOP 1 ben_crashcost_inj
+				FROM #comparison_years_i0
+				)
+			) / (
+			CASE 
+				WHEN (
+						(
+							SELECT TOP 1 period
+							FROM #comparison_years_i1
+							) - (
+							SELECT TOP 1 period
+							FROM #comparison_years_i0
+							)
+						) = 0
+					THEN 1
+				ELSE (
+						(
+							SELECT TOP 1 period
+							FROM #comparison_years_i1
+							) - (
+							SELECT TOP 1 period
+							FROM #comparison_years_i0
+							)
+						)
+				END
+			) + (
+			SELECT TOP 1 ben_crashcost_inj
+			FROM multiyear_results
+			WHERE analysis_id = @analysis_id
+				AND period = mr.period - 1
+			),
+		ben_crashcost_pdo = (
+			(
+				SELECT TOP 1 ben_crashcost_pdo
+				FROM #comparison_years_i1
+				) - (
+				SELECT TOP 1 ben_crashcost_pdo
+				FROM #comparison_years_i0
+				)
+			) / (
+			CASE 
+				WHEN (
+						(
+							SELECT TOP 1 period
+							FROM #comparison_years_i1
+							) - (
+							SELECT TOP 1 period
+							FROM #comparison_years_i0
+							)
+						) = 0
+					THEN 1
+				ELSE (
+						(
+							SELECT TOP 1 period
+							FROM #comparison_years_i1
+							) - (
+							SELECT TOP 1 period
+							FROM #comparison_years_i0
+							)
+						)
+				END
+			) + (
+			SELECT TOP 1 ben_crashcost_pdo
+			FROM multiyear_results
+			WHERE analysis_id = @analysis_id
+				AND period = mr.period - 1
+			),
+		ben_persons_phys_active_coc = (
+			(
+				SELECT TOP 1 ben_persons_phys_active_coc
+				FROM #comparison_years_i1
+				) - (
+				SELECT TOP 1 ben_persons_phys_active_coc
+				FROM #comparison_years_i0
+				)
+			) / (
+			CASE 
+				WHEN (
+						(
+							SELECT TOP 1 period
+							FROM #comparison_years_i1
+							) - (
+							SELECT TOP 1 period
+							FROM #comparison_years_i0
+							)
+						) = 0
+					THEN 1
+				ELSE (
+						(
+							SELECT TOP 1 period
+							FROM #comparison_years_i1
+							) - (
+							SELECT TOP 1 period
+							FROM #comparison_years_i0
+							)
+						)
+				END
+			) + (
+			SELECT TOP 1 ben_persons_phys_active_coc
+			FROM multiyear_results
+			WHERE analysis_id = @analysis_id
+				AND period = mr.period - 1
+			),
+		ben_persons_phys_active = (
+			(
+				SELECT TOP 1 ben_persons_phys_active
+				FROM #comparison_years_i1
+				) - (
+				SELECT TOP 1 ben_persons_phys_active
+				FROM #comparison_years_i0
+				)
+			) / (
+			CASE 
+				WHEN (
+						(
+							SELECT TOP 1 period
+							FROM #comparison_years_i1
+							) - (
+							SELECT TOP 1 period
+							FROM #comparison_years_i0
+							)
+						) = 0
+					THEN 1
+				ELSE (
+						(
+							SELECT TOP 1 period
+							FROM #comparison_years_i1
+							) - (
+							SELECT TOP 1 period
+							FROM #comparison_years_i0
+							)
+						)
+				END
+			) + (
+			SELECT TOP 1 ben_persons_phys_active
+			FROM multiyear_results
+			WHERE analysis_id = @analysis_id
+				AND period = mr.period - 1
+			),
+
+        ben_bike = (
+			(
+				SELECT TOP 1 ben_bike
+				FROM #comparison_years_i1
+				) - (
+				SELECT TOP 1 ben_bike
+				FROM #comparison_years_i0
+				)
+			) / (
+			CASE 
+				WHEN (
+						(
+							SELECT TOP 1 period
+							FROM #comparison_years_i1
+							) - (
+							SELECT TOP 1 period
+							FROM #comparison_years_i0
+							)
+						) = 0
+					THEN 1
+				ELSE (
+						(
+							SELECT TOP 1 period
+							FROM #comparison_years_i1
+							) - (
+							SELECT TOP 1 period
+							FROM #comparison_years_i0
+							)
+						)
+				END
+			) + (
+			SELECT TOP 1 ben_bike
+			FROM multiyear_results
+			WHERE analysis_id = @analysis_id
+				AND period = mr.period - 1
+			),
+        ben_bike_coc = (
+			(
+				SELECT TOP 1 ben_bike_coc
+				FROM #comparison_years_i1
+				) - (
+				SELECT TOP 1 ben_bike_coc
+				FROM #comparison_years_i0
+				)
+			) / (
+			CASE 
+				WHEN (
+						(
+							SELECT TOP 1 period
+							FROM #comparison_years_i1
+							) - (
+							SELECT TOP 1 period
+							FROM #comparison_years_i0
+							)
+						) = 0
+					THEN 1
+				ELSE (
+						(
+							SELECT TOP 1 period
+							FROM #comparison_years_i1
+							) - (
+							SELECT TOP 1 period
+							FROM #comparison_years_i0
+							)
+						)
+				END
+			) + (
+			SELECT TOP 1 ben_bike_coc
+			FROM multiyear_results
+			WHERE analysis_id = @analysis_id
+				AND period = mr.period - 1
+			),
+
+        ben_walk = (
+			(
+				SELECT TOP 1 ben_walk
+				FROM #comparison_years_i1
+				) - (
+				SELECT TOP 1 ben_walk
+				FROM #comparison_years_i0
+				)
+			) / (
+			CASE 
+				WHEN (
+						(
+							SELECT TOP 1 period
+							FROM #comparison_years_i1
+							) - (
+							SELECT TOP 1 period
+							FROM #comparison_years_i0
+							)
+						) = 0
+					THEN 1
+				ELSE (
+						(
+							SELECT TOP 1 period
+							FROM #comparison_years_i1
+							) - (
+							SELECT TOP 1 period
+							FROM #comparison_years_i0
+							)
+						)
+				END
+			) + (
+			SELECT TOP 1 ben_walk
+			FROM multiyear_results
+			WHERE analysis_id = @analysis_id
+				AND period = mr.period - 1
+			),
+        ben_walk_coc = (
+			(
+				SELECT TOP 1 ben_walk_coc
+				FROM #comparison_years_i1
+				) - (
+				SELECT TOP 1 ben_walk_coc
+				FROM #comparison_years_i0
+				)
+			) / (
+			CASE 
+				WHEN (
+						(
+							SELECT TOP 1 period
+							FROM #comparison_years_i1
+							) - (
+							SELECT TOP 1 period
+							FROM #comparison_years_i0
+							)
+						) = 0
+					THEN 1
+				ELSE (
+						(
+							SELECT TOP 1 period
+							FROM #comparison_years_i1
+							) - (
+							SELECT TOP 1 period
+							FROM #comparison_years_i0
+							)
+						)
+				END
+			) + (
+			SELECT TOP 1 ben_walk_coc
+			FROM multiyear_results
+			WHERE analysis_id = @analysis_id
+				AND period = mr.period - 1
+			),
+
+
+
+
+		ben_relcost_auto = (
+			(
+				SELECT TOP 1 ben_relcost_auto
+				FROM #comparison_years_i1
+				) - (
+				SELECT TOP 1 ben_relcost_auto
+				FROM #comparison_years_i0
+				)
+			) / (
+			CASE 
+				WHEN (
+						(
+							SELECT TOP 1 period
+							FROM #comparison_years_i1
+							) - (
+							SELECT TOP 1 period
+							FROM #comparison_years_i0
+							)
+						) = 0
+					THEN 1
+				ELSE (
+						(
+							SELECT TOP 1 period
+							FROM #comparison_years_i1
+							) - (
+							SELECT TOP 1 period
+							FROM #comparison_years_i0
+							)
+						)
+				END
+			) + (
+			SELECT TOP 1 ben_relcost_auto
+			FROM multiyear_results
+			WHERE analysis_id = @analysis_id
+				AND period = mr.period - 1
+			),
+		ben_relcost_truck_hvy = (
+			(
+				SELECT TOP 1 ben_relcost_truck_hvy
+				FROM #comparison_years_i1
+				) - (
+				SELECT TOP 1 ben_relcost_truck_hvy
+				FROM #comparison_years_i0
+				)
+			) / (
+			CASE 
+				WHEN (
+						(
+							SELECT TOP 1 period
+							FROM #comparison_years_i1
+							) - (
+							SELECT TOP 1 period
+							FROM #comparison_years_i0
+							)
+						) = 0
+					THEN 1
+				ELSE (
+						(
+							SELECT TOP 1 period
+							FROM #comparison_years_i1
+							) - (
+							SELECT TOP 1 period
+							FROM #comparison_years_i0
+							)
+						)
+				END
+			) + (
+			SELECT TOP 1 ben_relcost_truck_hvy
+			FROM multiyear_results
+			WHERE analysis_id = @analysis_id
+				AND period = mr.period - 1
+			),
+		ben_relcost_truck_lht = (
+			(
+				SELECT TOP 1 ben_relcost_truck_lht
+				FROM #comparison_years_i1
+				) - (
+				SELECT TOP 1 ben_relcost_truck_lht
+				FROM #comparison_years_i0
+				)
+			) / (
+			CASE 
+				WHEN (
+						(
+							SELECT TOP 1 period
+							FROM #comparison_years_i1
+							) - (
+							SELECT TOP 1 period
+							FROM #comparison_years_i0
+							)
+						) = 0
+					THEN 1
+				ELSE (
+						(
+							SELECT TOP 1 period
+							FROM #comparison_years_i1
+							) - (
+							SELECT TOP 1 period
+							FROM #comparison_years_i0
+							)
+						)
+				END
+			) + (
+			SELECT TOP 1 ben_relcost_truck_lht
+			FROM multiyear_results
+			WHERE analysis_id = @analysis_id
+				AND period = mr.period - 1
+			),
+		ben_relcost_truck_med = (
+			(
+				SELECT TOP 1 ben_relcost_truck_med
+				FROM #comparison_years_i1
+				) - (
+				SELECT TOP 1 ben_relcost_truck_med
+				FROM #comparison_years_i0
+				)
+			) / (
+			CASE 
+				WHEN (
+						(
+							SELECT TOP 1 period
+							FROM #comparison_years_i1
+							) - (
+							SELECT TOP 1 period
+							FROM #comparison_years_i0
+							)
+						) = 0
+					THEN 1
+				ELSE (
+						(
+							SELECT TOP 1 period
+							FROM #comparison_years_i1
+							) - (
+							SELECT TOP 1 period
+							FROM #comparison_years_i0
+							)
+						)
+				END
+			) + (
+			SELECT TOP 1 ben_relcost_truck_med
+			FROM multiyear_results
+			WHERE analysis_id = @analysis_id
+				AND period = mr.period - 1
+			),
+		ben_tt_at_commute = (
+			(
+				SELECT TOP 1 ben_tt_at_commute
+				FROM #comparison_years_i1
+				) - (
+				SELECT TOP 1 ben_tt_at_commute
+				FROM #comparison_years_i0
+				)
+			) / (
+			CASE 
+				WHEN (
+						(
+							SELECT TOP 1 period
+							FROM #comparison_years_i1
+							) - (
+							SELECT TOP 1 period
+							FROM #comparison_years_i0
+							)
+						) = 0
+					THEN 1
+				ELSE (
+						(
+							SELECT TOP 1 period
+							FROM #comparison_years_i1
+							) - (
+							SELECT TOP 1 period
+							FROM #comparison_years_i0
+							)
+						)
+				END
+			) + (
+			SELECT TOP 1 ben_tt_at_commute
+			FROM multiyear_results
+			WHERE analysis_id = @analysis_id
+				AND period = mr.period - 1
+			),
+		ben_tt_auto_commute = (
+			(
+				SELECT TOP 1 ben_tt_auto_commute
+				FROM #comparison_years_i1
+				) - (
+				SELECT TOP 1 ben_tt_auto_commute
+				FROM #comparison_years_i0
+				)
+			) / (
+			CASE 
+				WHEN (
+						(
+							SELECT TOP 1 period
+							FROM #comparison_years_i1
+							) - (
+							SELECT TOP 1 period
+							FROM #comparison_years_i0
+							)
+						) = 0
+					THEN 1
+				ELSE (
+						(
+							SELECT TOP 1 period
+							FROM #comparison_years_i1
+							) - (
+							SELECT TOP 1 period
+							FROM #comparison_years_i0
+							)
+						)
+				END
+			) + (
+			SELECT TOP 1 ben_tt_auto_commute
+			FROM multiyear_results
+			WHERE analysis_id = @analysis_id
+				AND period = mr.period - 1
+			),
+		ben_tt_transit_commute = (
+			(
+				SELECT TOP 1 ben_tt_transit_commute
+				FROM #comparison_years_i1
+				) - (
+				SELECT TOP 1 ben_tt_transit_commute
+				FROM #comparison_years_i0
+				)
+			) / (
+			CASE 
+				WHEN (
+						(
+							SELECT TOP 1 period
+							FROM #comparison_years_i1
+							) - (
+							SELECT TOP 1 period
+							FROM #comparison_years_i0
+							)
+						) = 0
+					THEN 1
+				ELSE (
+						(
+							SELECT TOP 1 period
+							FROM #comparison_years_i1
+							) - (
+							SELECT TOP 1 period
+							FROM #comparison_years_i0
+							)
+						)
+				END
+			) + (
+			SELECT TOP 1 ben_tt_transit_commute
+			FROM multiyear_results
+			WHERE analysis_id = @analysis_id
+				AND period = mr.period - 1
+			),
+		ben_tt_at_noncommute = (
+			(
+				SELECT TOP 1 ben_tt_at_noncommute
+				FROM #comparison_years_i1
+				) - (
+				SELECT TOP 1 ben_tt_at_noncommute
+				FROM #comparison_years_i0
+				)
+			) / (
+			CASE 
+				WHEN (
+						(
+							SELECT TOP 1 period
+							FROM #comparison_years_i1
+							) - (
+							SELECT TOP 1 period
+							FROM #comparison_years_i0
+							)
+						) = 0
+					THEN 1
+				ELSE (
+						(
+							SELECT TOP 1 period
+							FROM #comparison_years_i1
+							) - (
+							SELECT TOP 1 period
+							FROM #comparison_years_i0
+							)
+						)
+				END
+			) + (
+			SELECT TOP 1 ben_tt_at_noncommute
+			FROM multiyear_results
+			WHERE analysis_id = @analysis_id
+				AND period = mr.period - 1
+			),
+		ben_tt_auto_noncommute = (
+			(
+				SELECT TOP 1 ben_tt_auto_noncommute
+				FROM #comparison_years_i1
+				) - (
+				SELECT TOP 1 ben_tt_auto_noncommute
+				FROM #comparison_years_i0
+				)
+			) / (
+			CASE 
+				WHEN (
+						(
+							SELECT TOP 1 period
+							FROM #comparison_years_i1
+							) - (
+							SELECT TOP 1 period
+							FROM #comparison_years_i0
+							)
+						) = 0
+					THEN 1
+				ELSE (
+						(
+							SELECT TOP 1 period
+							FROM #comparison_years_i1
+							) - (
+							SELECT TOP 1 period
+							FROM #comparison_years_i0
+							)
+						)
+				END
+			) + (
+			SELECT TOP 1 ben_tt_auto_noncommute
+			FROM multiyear_results
+			WHERE analysis_id = @analysis_id
+				AND period = mr.period - 1
+			),
+		ben_tt_transit_noncommute = (
+			(
+				SELECT TOP 1 ben_tt_transit_noncommute
+				FROM #comparison_years_i1
+				) - (
+				SELECT TOP 1 ben_tt_transit_noncommute
+				FROM #comparison_years_i0
+				)
+			) / (
+			CASE 
+				WHEN (
+						(
+							SELECT TOP 1 period
+							FROM #comparison_years_i1
+							) - (
+							SELECT TOP 1 period
+							FROM #comparison_years_i0
+							)
+						) = 0
+					THEN 1
+				ELSE (
+						(
+							SELECT TOP 1 period
+							FROM #comparison_years_i1
+							) - (
+							SELECT TOP 1 period
+							FROM #comparison_years_i0
+							)
+						)
+				END
+			) + (
+			SELECT TOP 1 ben_tt_transit_noncommute
+			FROM multiyear_results
+			WHERE analysis_id = @analysis_id
+				AND period = mr.period - 1
+			),
+		ben_tt_at_commute_coc = (
+			(
+				SELECT TOP 1 ben_tt_at_commute_coc
+				FROM #comparison_years_i1
+				) - (
+				SELECT TOP 1 ben_tt_at_commute_coc
+				FROM #comparison_years_i0
+				)
+			) / (
+			CASE 
+				WHEN (
+						(
+							SELECT TOP 1 period
+							FROM #comparison_years_i1
+							) - (
+							SELECT TOP 1 period
+							FROM #comparison_years_i0
+							)
+						) = 0
+					THEN 1
+				ELSE (
+						(
+							SELECT TOP 1 period
+							FROM #comparison_years_i1
+							) - (
+							SELECT TOP 1 period
+							FROM #comparison_years_i0
+							)
+						)
+				END
+			) + (
+			SELECT TOP 1 ben_tt_at_commute_coc
+			FROM multiyear_results
+			WHERE analysis_id = @analysis_id
+				AND period = mr.period - 1
+			),
+		ben_tt_auto_commute_coc = (
+			(
+				SELECT TOP 1 ben_tt_auto_commute_coc
+				FROM #comparison_years_i1
+				) - (
+				SELECT TOP 1 ben_tt_auto_commute_coc
+				FROM #comparison_years_i0
+				)
+			) / (
+			CASE 
+				WHEN (
+						(
+							SELECT TOP 1 period
+							FROM #comparison_years_i1
+							) - (
+							SELECT TOP 1 period
+							FROM #comparison_years_i0
+							)
+						) = 0
+					THEN 1
+				ELSE (
+						(
+							SELECT TOP 1 period
+							FROM #comparison_years_i1
+							) - (
+							SELECT TOP 1 period
+							FROM #comparison_years_i0
+							)
+						)
+				END
+			) + (
+			SELECT TOP 1 ben_tt_auto_commute_coc
+			FROM multiyear_results
+			WHERE analysis_id = @analysis_id
+				AND period = mr.period - 1
+			),
+		ben_tt_transit_commute_coc = (
+			(
+				SELECT TOP 1 ben_tt_transit_commute_coc
+				FROM #comparison_years_i1
+				) - (
+				SELECT TOP 1 ben_tt_transit_commute_coc
+				FROM #comparison_years_i0
+				)
+			) / (
+			CASE 
+				WHEN (
+						(
+							SELECT TOP 1 period
+							FROM #comparison_years_i1
+							) - (
+							SELECT TOP 1 period
+							FROM #comparison_years_i0
+							)
+						) = 0
+					THEN 1
+				ELSE (
+						(
+							SELECT TOP 1 period
+							FROM #comparison_years_i1
+							) - (
+							SELECT TOP 1 period
+							FROM #comparison_years_i0
+							)
+						)
+				END
+			) + (
+			SELECT TOP 1 ben_tt_transit_commute_coc
+			FROM multiyear_results
+			WHERE analysis_id = @analysis_id
+				AND period = mr.period - 1
+			),
+		ben_tt_at_noncommute_coc = (
+			(
+				SELECT TOP 1 ben_tt_at_noncommute_coc
+				FROM #comparison_years_i1
+				) - (
+				SELECT TOP 1 ben_tt_at_noncommute_coc
+				FROM #comparison_years_i0
+				)
+			) / (
+			CASE 
+				WHEN (
+						(
+							SELECT TOP 1 period
+							FROM #comparison_years_i1
+							) - (
+							SELECT TOP 1 period
+							FROM #comparison_years_i0
+							)
+						) = 0
+					THEN 1
+				ELSE (
+						(
+							SELECT TOP 1 period
+							FROM #comparison_years_i1
+							) - (
+							SELECT TOP 1 period
+							FROM #comparison_years_i0
+							)
+						)
+				END
+			) + (
+			SELECT TOP 1 ben_tt_at_noncommute_coc
+			FROM multiyear_results
+			WHERE analysis_id = @analysis_id
+				AND period = mr.period - 1
+			),
+		ben_tt_auto_noncommute_coc = (
+			(
+				SELECT TOP 1 ben_tt_auto_noncommute_coc
+				FROM #comparison_years_i1
+				) - (
+				SELECT TOP 1 ben_tt_auto_noncommute_coc
+				FROM #comparison_years_i0
+				)
+			) / (
+			CASE 
+				WHEN (
+						(
+							SELECT TOP 1 period
+							FROM #comparison_years_i1
+							) - (
+							SELECT TOP 1 period
+							FROM #comparison_years_i0
+							)
+						) = 0
+					THEN 1
+				ELSE (
+						(
+							SELECT TOP 1 period
+							FROM #comparison_years_i1
+							) - (
+							SELECT TOP 1 period
+							FROM #comparison_years_i0
+							)
+						)
+				END
+			) + (
+			SELECT TOP 1 ben_tt_auto_noncommute_coc
+			FROM multiyear_results
+			WHERE analysis_id = @analysis_id
+				AND period = mr.period - 1
+			),
+		ben_tt_transit_noncommute_coc = (
+			(
+				SELECT TOP 1 ben_tt_transit_noncommute_coc
+				FROM #comparison_years_i1
+				) - (
+				SELECT TOP 1 ben_tt_transit_noncommute_coc
+				FROM #comparison_years_i0
+				)
+			) / (
+			CASE 
+				WHEN (
+						(
+							SELECT TOP 1 period
+							FROM #comparison_years_i1
+							) - (
+							SELECT TOP 1 period
+							FROM #comparison_years_i0
+							)
+						) = 0
+					THEN 1
+				ELSE (
+						(
+							SELECT TOP 1 period
+							FROM #comparison_years_i1
+							) - (
+							SELECT TOP 1 period
+							FROM #comparison_years_i0
+							)
+						)
+				END
+			) + (
+			SELECT TOP 1 ben_tt_transit_noncommute_coc
+			FROM multiyear_results
+			WHERE analysis_id = @analysis_id
+				AND period = mr.period - 1
+			),
+		ben_tt_comm = (
+			(
+				SELECT TOP 1 ben_tt_comm
+				FROM #comparison_years_i1
+				) - (
+				SELECT TOP 1 ben_tt_comm
+				FROM #comparison_years_i0
+				)
+			) / (
+			CASE 
+				WHEN (
+						(
+							SELECT TOP 1 period
+							FROM #comparison_years_i1
+							) - (
+							SELECT TOP 1 period
+							FROM #comparison_years_i0
+							)
+						) = 0
+					THEN 1
+				ELSE (
+						(
+							SELECT TOP 1 period
+							FROM #comparison_years_i1
+							) - (
+							SELECT TOP 1 period
+							FROM #comparison_years_i0
+							)
+						)
+				END
+			) + (
+			SELECT TOP 1 ben_tt_comm
+			FROM multiyear_results
+			WHERE analysis_id = @analysis_id
+				AND period = mr.period - 1
+			),
+		ben_tt_truck = (
+			(
+				SELECT TOP 1 ben_tt_truck
+				FROM #comparison_years_i1
+				) - (
+				SELECT TOP 1 ben_tt_truck
+				FROM #comparison_years_i0
+				)
+			) / (
+			CASE 
+				WHEN (
+						(
+							SELECT TOP 1 period
+							FROM #comparison_years_i1
+							) - (
+							SELECT TOP 1 period
+							FROM #comparison_years_i0
+							)
+						) = 0
+					THEN 1
+				ELSE (
+						(
+							SELECT TOP 1 period
+							FROM #comparison_years_i1
+							) - (
+							SELECT TOP 1 period
+							FROM #comparison_years_i0
+							)
+						)
+				END
+			) + (
+			SELECT TOP 1 ben_tt_truck
+			FROM multiyear_results
+			WHERE analysis_id = @analysis_id
+				AND period = mr.period - 1
+			),
+		ben_voc_auto = (
+			(
+				SELECT TOP 1 ben_voc_auto
+				FROM #comparison_years_i1
+				) - (
+				SELECT TOP 1 ben_voc_auto
+				FROM #comparison_years_i0
+				)
+			) / (
+			CASE 
+				WHEN (
+						(
+							SELECT TOP 1 period
+							FROM #comparison_years_i1
+							) - (
+							SELECT TOP 1 period
+							FROM #comparison_years_i0
+							)
+						) = 0
+					THEN 1
+				ELSE (
+						(
+							SELECT TOP 1 period
+							FROM #comparison_years_i1
+							) - (
+							SELECT TOP 1 period
+							FROM #comparison_years_i0
+							)
+						)
+				END
+			) + (
+			SELECT TOP 1 ben_voc_auto
+			FROM multiyear_results
+			WHERE analysis_id = @analysis_id
+				AND period = mr.period - 1
+			),
+		ben_voc_truck_lht = (
+			(
+				SELECT TOP 1 ben_voc_truck_lht
+				FROM #comparison_years_i1
+				) - (
+				SELECT TOP 1 ben_voc_truck_lht
+				FROM #comparison_years_i0
+				)
+			) / (
+			CASE 
+				WHEN (
+						(
+							SELECT TOP 1 period
+							FROM #comparison_years_i1
+							) - (
+							SELECT TOP 1 period
+							FROM #comparison_years_i0
+							)
+						) = 0
+					THEN 1
+				ELSE (
+						(
+							SELECT TOP 1 period
+							FROM #comparison_years_i1
+							) - (
+							SELECT TOP 1 period
+							FROM #comparison_years_i0
+							)
+						)
+				END
+			) + (
+			SELECT TOP 1 ben_voc_truck_lht
+			FROM multiyear_results
+			WHERE analysis_id = @analysis_id
+				AND period = mr.period - 1
+			),
+		ben_voc_truck_med = (
+			(
+				SELECT TOP 1 ben_voc_truck_med
+				FROM #comparison_years_i1
+				) - (
+				SELECT TOP 1 ben_voc_truck_med
+				FROM #comparison_years_i0
+				)
+			) / (
+			CASE 
+				WHEN (
+						(
+							SELECT TOP 1 period
+							FROM #comparison_years_i1
+							) - (
+							SELECT TOP 1 period
+							FROM #comparison_years_i0
+							)
+						) = 0
+					THEN 1
+				ELSE (
+						(
+							SELECT TOP 1 period
+							FROM #comparison_years_i1
+							) - (
+							SELECT TOP 1 period
+							FROM #comparison_years_i0
+							)
+						)
+				END
+			) + (
+			SELECT TOP 1 ben_voc_truck_med
+			FROM multiyear_results
+			WHERE analysis_id = @analysis_id
+				AND period = mr.period - 1
+			),
+		ben_voc_truck_hvy = (
+			(
+				SELECT TOP 1 ben_voc_truck_hvy
+				FROM #comparison_years_i1
+				) - (
+				SELECT TOP 1 ben_voc_truck_hvy
+				FROM #comparison_years_i0
+				)
+			) / (
+			CASE 
+				WHEN (
+						(
+							SELECT TOP 1 period
+							FROM #comparison_years_i1
+							) - (
+							SELECT TOP 1 period
+							FROM #comparison_years_i0
+							)
+						) = 0
+					THEN 1
+				ELSE (
+						(
+							SELECT TOP 1 period
+							FROM #comparison_years_i1
+							) - (
+							SELECT TOP 1 period
+							FROM #comparison_years_i0
+							)
+						)
+				END
+			) + (
+			SELECT TOP 1 ben_voc_truck_hvy
+			FROM multiyear_results
+			WHERE analysis_id = @analysis_id
+				AND period = mr.period - 1
+			),
+		toll_rev_base = (
+			(
+				SELECT TOP 1 toll_rev_base
+				FROM #comparison_years_i1
+				) - (
+				SELECT TOP 1 toll_rev_base
+				FROM #comparison_years_i0
+				)
+			) / (
+			CASE 
+				WHEN (
+						(
+							SELECT TOP 1 period
+							FROM #comparison_years_i1
+							) - (
+							SELECT TOP 1 period
+							FROM #comparison_years_i0
+							)
+						) = 0
+					THEN 1
+				ELSE (
+						(
+							SELECT TOP 1 period
+							FROM #comparison_years_i1
+							) - (
+							SELECT TOP 1 period
+							FROM #comparison_years_i0
+							)
+						)
+				END
+			) + (
+			SELECT TOP 1 toll_rev_base
+			FROM multiyear_results
+			WHERE analysis_id = @analysis_id
+				AND period = mr.period - 1
+			),
+		toll_rev_build = (
+			(
+				SELECT TOP 1 toll_rev_build
+				FROM #comparison_years_i1
+				) - (
+				SELECT TOP 1 toll_rev_build
+				FROM #comparison_years_i0
+				)
+			) / (
+			CASE 
+				WHEN (
+						(
+							SELECT TOP 1 period
+							FROM #comparison_years_i1
+							) - (
+							SELECT TOP 1 period
+							FROM #comparison_years_i0
+							)
+						) = 0
+					THEN 1
+				ELSE (
+						(
+							SELECT TOP 1 period
+							FROM #comparison_years_i1
+							) - (
+							SELECT TOP 1 period
+							FROM #comparison_years_i0
+							)
+						)
+				END
+			) + (
+			SELECT TOP 1 toll_rev_build
+			FROM multiyear_results
+			WHERE analysis_id = @analysis_id
+				AND period = mr.period - 1
+			),
+		fare_rev_base = (
+			(
+				SELECT TOP 1 fare_rev_base
+				FROM #comparison_years_i1
+				) - (
+				SELECT TOP 1 fare_rev_base
+				FROM #comparison_years_i0
+				)
+			) / (
+			CASE 
+				WHEN (
+						(
+							SELECT TOP 1 period
+							FROM #comparison_years_i1
+							) - (
+							SELECT TOP 1 period
+							FROM #comparison_years_i0
+							)
+						) = 0
+					THEN 1
+				ELSE (
+						(
+							SELECT TOP 1 period
+							FROM #comparison_years_i1
+							) - (
+							SELECT TOP 1 period
+							FROM #comparison_years_i0
+							)
+						)
+				END
+			) + (
+			SELECT TOP 1 fare_rev_base
+			FROM multiyear_results
+			WHERE analysis_id = @analysis_id
+				AND period = mr.period - 1
+			),
+		fare_rev_build = (
+			(
+				SELECT TOP 1 fare_rev_build
+				FROM #comparison_years_i1
+				) - (
+				SELECT TOP 1 fare_rev_build
+				FROM #comparison_years_i0
+				)
+			) / (
+			CASE 
+				WHEN (
+						(
+							SELECT TOP 1 period
+							FROM #comparison_years_i1
+							) - (
+							SELECT TOP 1 period
+							FROM #comparison_years_i0
+							)
+						) = 0
+					THEN 1
+				ELSE (
+						(
+							SELECT TOP 1 period
+							FROM #comparison_years_i1
+							) - (
+							SELECT TOP 1 period
+							FROM #comparison_years_i0
+							)
+						)
+				END
+			) + (
+			SELECT TOP 1 fare_rev_build
+			FROM multiyear_results
+			WHERE analysis_id = @analysis_id
+				AND period = mr.period - 1
+			),
+		-- totals_feature
+		base_tt_person = (
+			(
+				SELECT TOP 1 base_tt_person
+				FROM #comparison_years_i1
+				) - (
+				SELECT TOP 1 base_tt_person
+				FROM #comparison_years_i0
+				)
+			) / (
+			CASE 
+				WHEN (
+						(
+							SELECT TOP 1 period
+							FROM #comparison_years_i1
+							) - (
+							SELECT TOP 1 period
+							FROM #comparison_years_i0
+							)
+						) = 0
+					THEN 1
+				ELSE (
+						(
+							SELECT TOP 1 period
+							FROM #comparison_years_i1
+							) - (
+							SELECT TOP 1 period
+							FROM #comparison_years_i0
+							)
+						)
+				END
+			) + (
+			SELECT TOP 1 base_tt_person
+			FROM multiyear_results
+			WHERE analysis_id = @analysis_id
+				AND period = mr.period - 1
+			),
+		build_tt_person = (
+			(
+				SELECT TOP 1 build_tt_person
+				FROM #comparison_years_i1
+				) - (
+				SELECT TOP 1 build_tt_person
+				FROM #comparison_years_i0
+				)
+			) / (
+			CASE 
+				WHEN (
+						(
+							SELECT TOP 1 period
+							FROM #comparison_years_i1
+							) - (
+							SELECT TOP 1 period
+							FROM #comparison_years_i0
+							)
+						) = 0
+					THEN 1
+				ELSE (
+						(
+							SELECT TOP 1 period
+							FROM #comparison_years_i1
+							) - (
+							SELECT TOP 1 period
+							FROM #comparison_years_i0
+							)
+						)
+				END
+			) + (
+			SELECT TOP 1 build_tt_person
+			FROM multiyear_results
+			WHERE analysis_id = @analysis_id
+				AND period = mr.period - 1
+			),
+		base_tt_truck_comm = (
+			(
+				SELECT TOP 1 base_tt_truck_comm
+				FROM #comparison_years_i1
+				) - (
+				SELECT TOP 1 base_tt_truck_comm
+				FROM #comparison_years_i0
+				)
+			) / (
+			CASE 
+				WHEN (
+						(
+							SELECT TOP 1 period
+							FROM #comparison_years_i1
+							) - (
+							SELECT TOP 1 period
+							FROM #comparison_years_i0
+							)
+						) = 0
+					THEN 1
+				ELSE (
+						(
+							SELECT TOP 1 period
+							FROM #comparison_years_i1
+							) - (
+							SELECT TOP 1 period
+							FROM #comparison_years_i0
+							)
+						)
+				END
+			) + (
+			SELECT TOP 1 base_tt_truck_comm
+			FROM multiyear_results
+			WHERE analysis_id = @analysis_id
+				AND period = mr.period - 1
+			), --added by JC 2010.10.20
+		build_tt_truck_comm = (
+			(
+				SELECT TOP 1 build_tt_truck_comm
+				FROM #comparison_years_i1
+				) - (
+				SELECT TOP 1 build_tt_truck_comm
+				FROM #comparison_years_i0
+				)
+			) / (
+			CASE 
+				WHEN (
+						(
+							SELECT TOP 1 period
+							FROM #comparison_years_i1
+							) - (
+							SELECT TOP 1 period
+							FROM #comparison_years_i0
+							)
+						) = 0
+					THEN 1
+				ELSE (
+						(
+							SELECT TOP 1 period
+							FROM #comparison_years_i1
+							) - (
+							SELECT TOP 1 period
+							FROM #comparison_years_i0
+							)
+						)
+				END
+			) + (
+			SELECT TOP 1 build_tt_truck_comm
+			FROM multiyear_results
+			WHERE analysis_id = @analysis_id
+				AND period = mr.period - 1
+			), --added by JC 2010.10.20
+		ratio_tt_person = (
+			(
+				SELECT TOP 1 ratio_tt_person
+				FROM #comparison_years_i1
+				) - (
+				SELECT TOP 1 ratio_tt_person
+				FROM #comparison_years_i0
+				)
+			) / (
+			CASE 
+				WHEN (
+						(
+							SELECT TOP 1 period
+							FROM #comparison_years_i1
+							) - (
+							SELECT TOP 1 period
+							FROM #comparison_years_i0
+							)
+						) = 0
+					THEN 1
+				ELSE (
+						(
+							SELECT TOP 1 period
+							FROM #comparison_years_i1
+							) - (
+							SELECT TOP 1 period
+							FROM #comparison_years_i0
+							)
+						)
+				END
+			) + (
+			SELECT TOP 1 ratio_tt_person
+			FROM multiyear_results
+			WHERE analysis_id = @analysis_id
+				AND period = mr.period - 1
+			),
+		ratio_tt_truck_comm = (
+			(
+				SELECT TOP 1 ratio_tt_truck_comm
+				FROM #comparison_years_i1
+				) - (
+				SELECT TOP 1 ratio_tt_truck_comm
+				FROM #comparison_years_i0
+				)
+			) / (
+			CASE 
+				WHEN (
+						(
+							SELECT TOP 1 period
+							FROM #comparison_years_i1
+							) - (
+							SELECT TOP 1 period
+							FROM #comparison_years_i0
+							)
+						) = 0
+					THEN 1
+				ELSE (
+						(
+							SELECT TOP 1 period
+							FROM #comparison_years_i1
+							) - (
+							SELECT TOP 1 period
+							FROM #comparison_years_i0
+							)
+						)
+				END
+			) + (
+			SELECT TOP 1 ratio_tt_truck_comm
+			FROM multiyear_results
+			WHERE analysis_id = @analysis_id
+				AND period = mr.period - 1
+			),
+		base_rel_cost = (
+			(
+				SELECT TOP 1 base_rel_cost
+				FROM #comparison_years_i1
+				) - (
+				SELECT TOP 1 base_rel_cost
+				FROM #comparison_years_i0
+				)
+			) / (
+			CASE 
+				WHEN (
+						(
+							SELECT TOP 1 period
+							FROM #comparison_years_i1
+							) - (
+							SELECT TOP 1 period
+							FROM #comparison_years_i0
+							)
+						) = 0
+					THEN 1
+				ELSE (
+						(
+							SELECT TOP 1 period
+							FROM #comparison_years_i1
+							) - (
+							SELECT TOP 1 period
+							FROM #comparison_years_i0
+							)
+						)
+				END
+			) + (
+			SELECT TOP 1 base_rel_cost
+			FROM multiyear_results
+			WHERE analysis_id = @analysis_id
+				AND period = mr.period - 1
+			),
+		build_rel_cost = (
+			(
+				SELECT TOP 1 build_rel_cost
+				FROM #comparison_years_i1
+				) - (
+				SELECT TOP 1 build_rel_cost
+				FROM #comparison_years_i0
+				)
+			) / (
+			CASE 
+				WHEN (
+						(
+							SELECT TOP 1 period
+							FROM #comparison_years_i1
+							) - (
+							SELECT TOP 1 period
+							FROM #comparison_years_i0
+							)
+						) = 0
+					THEN 1
+				ELSE (
+						(
+							SELECT TOP 1 period
+							FROM #comparison_years_i1
+							) - (
+							SELECT TOP 1 period
+							FROM #comparison_years_i0
+							)
+						)
+				END
+			) + (
+			SELECT TOP 1 build_rel_cost
+			FROM multiyear_results
+			WHERE analysis_id = @analysis_id
+				AND period = mr.period - 1
+			),
+		-- coc detail
+		ben_autos_owned_coc_race = (
+			(
+				SELECT TOP 1 ben_autos_owned_coc_race
+				FROM #comparison_years_i1
+				) - (
+				SELECT TOP 1 ben_autos_owned_coc_race
+				FROM #comparison_years_i0
+				)
+			) / (
+			CASE 
+				WHEN (
+						(
+							SELECT TOP 1 period
+							FROM #comparison_years_i1
+							) - (
+							SELECT TOP 1 period
+							FROM #comparison_years_i0
+							)
+						) = 0
+					THEN 1
+				ELSE (
+						(
+							SELECT TOP 1 period
+							FROM #comparison_years_i1
+							) - (
+							SELECT TOP 1 period
+							FROM #comparison_years_i0
+							)
+						)
+				END
+			) + (
+			SELECT TOP 1 ben_autos_owned_coc_race
+			FROM multiyear_results
+			WHERE analysis_id = @analysis_id
+				AND period = mr.period - 1
+			),
+		ben_persons_phys_active_coc_race = (
+			(
+				SELECT TOP 1 ben_persons_phys_active_coc_race
+				FROM #comparison_years_i1
+				) - (
+				SELECT TOP 1 ben_persons_phys_active_coc_race
+				FROM #comparison_years_i0
+				)
+			) / (
+			CASE 
+				WHEN (
+						(
+							SELECT TOP 1 period
+							FROM #comparison_years_i1
+							) - (
+							SELECT TOP 1 period
+							FROM #comparison_years_i0
+							)
+						) = 0
+					THEN 1
+				ELSE (
+						(
+							SELECT TOP 1 period
+							FROM #comparison_years_i1
+							) - (
+							SELECT TOP 1 period
+							FROM #comparison_years_i0
+							)
+						)
+				END
+			) + (
+			SELECT TOP 1 ben_persons_phys_active_coc_race
+			FROM multiyear_results
+			WHERE analysis_id = @analysis_id
+				AND period = mr.period - 1
+			),
+
+        ben_bike_coc_race = (
+			(
+				SELECT TOP 1 ben_bike_coc_race
+				FROM #comparison_years_i1
+				) - (
+				SELECT TOP 1 ben_bike_coc_race
+				FROM #comparison_years_i0
+				)
+			) / (
+			CASE 
+				WHEN (
+						(
+							SELECT TOP 1 period
+							FROM #comparison_years_i1
+							) - (
+							SELECT TOP 1 period
+							FROM #comparison_years_i0
+							)
+						) = 0
+					THEN 1
+				ELSE (
+						(
+							SELECT TOP 1 period
+							FROM #comparison_years_i1
+							) - (
+							SELECT TOP 1 period
+							FROM #comparison_years_i0
+							)
+						)
+				END
+			) + (
+			SELECT TOP 1 ben_bike_coc_race
+			FROM multiyear_results
+			WHERE analysis_id = @analysis_id
+				AND period = mr.period - 1
+			),
+
+        ben_walk_coc_race = (
+			(
+				SELECT TOP 1 ben_walk_coc_race
+				FROM #comparison_years_i1
+				) - (
+				SELECT TOP 1 ben_walk_coc_race
+				FROM #comparison_years_i0
+				)
+			) / (
+			CASE 
+				WHEN (
+						(
+							SELECT TOP 1 period
+							FROM #comparison_years_i1
+							) - (
+							SELECT TOP 1 period
+							FROM #comparison_years_i0
+							)
+						) = 0
+					THEN 1
+				ELSE (
+						(
+							SELECT TOP 1 period
+							FROM #comparison_years_i1
+							) - (
+							SELECT TOP 1 period
+							FROM #comparison_years_i0
+							)
+						)
+				END
+			) + (
+			SELECT TOP 1 ben_walk_coc_race
+			FROM multiyear_results
+			WHERE analysis_id = @analysis_id
+				AND period = mr.period - 1
+			),
+
+
+		ben_tt_at_commute_coc_race = (
+			(
+				SELECT TOP 1 ben_tt_at_commute_coc_race
+				FROM #comparison_years_i1
+				) - (
+				SELECT TOP 1 ben_tt_at_commute_coc_race
+				FROM #comparison_years_i0
+				)
+			) / (
+			CASE 
+				WHEN (
+						(
+							SELECT TOP 1 period
+							FROM #comparison_years_i1
+							) - (
+							SELECT TOP 1 period
+							FROM #comparison_years_i0
+							)
+						) = 0
+					THEN 1
+				ELSE (
+						(
+							SELECT TOP 1 period
+							FROM #comparison_years_i1
+							) - (
+							SELECT TOP 1 period
+							FROM #comparison_years_i0
+							)
+						)
+				END
+			) + (
+			SELECT TOP 1 ben_tt_at_commute_coc_race
+			FROM multiyear_results
+			WHERE analysis_id = @analysis_id
+				AND period = mr.period - 1
+			),
+		ben_tt_auto_commute_coc_race = (
+			(
+				SELECT TOP 1 ben_tt_auto_commute_coc_race
+				FROM #comparison_years_i1
+				) - (
+				SELECT TOP 1 ben_tt_auto_commute_coc_race
+				FROM #comparison_years_i0
+				)
+			) / (
+			CASE 
+				WHEN (
+						(
+							SELECT TOP 1 period
+							FROM #comparison_years_i1
+							) - (
+							SELECT TOP 1 period
+							FROM #comparison_years_i0
+							)
+						) = 0
+					THEN 1
+				ELSE (
+						(
+							SELECT TOP 1 period
+							FROM #comparison_years_i1
+							) - (
+							SELECT TOP 1 period
+							FROM #comparison_years_i0
+							)
+						)
+				END
+			) + (
+			SELECT TOP 1 ben_tt_auto_commute_coc_race
+			FROM multiyear_results
+			WHERE analysis_id = @analysis_id
+				AND period = mr.period - 1
+			),
+		ben_tt_transit_commute_coc_race = (
+			(
+				SELECT TOP 1 ben_tt_transit_commute_coc_race
+				FROM #comparison_years_i1
+				) - (
+				SELECT TOP 1 ben_tt_transit_commute_coc_race
+				FROM #comparison_years_i0
+				)
+			) / (
+			CASE 
+				WHEN (
+						(
+							SELECT TOP 1 period
+							FROM #comparison_years_i1
+							) - (
+							SELECT TOP 1 period
+							FROM #comparison_years_i0
+							)
+						) = 0
+					THEN 1
+				ELSE (
+						(
+							SELECT TOP 1 period
+							FROM #comparison_years_i1
+							) - (
+							SELECT TOP 1 period
+							FROM #comparison_years_i0
+							)
+						)
+				END
+			) + (
+			SELECT TOP 1 ben_tt_transit_commute_coc_race
+			FROM multiyear_results
+			WHERE analysis_id = @analysis_id
+				AND period = mr.period - 1
+			),
+		ben_tt_at_noncommute_coc_race = (
+			(
+				SELECT TOP 1 ben_tt_at_noncommute_coc_race
+				FROM #comparison_years_i1
+				) - (
+				SELECT TOP 1 ben_tt_at_noncommute_coc_race
+				FROM #comparison_years_i0
+				)
+			) / (
+			CASE 
+				WHEN (
+						(
+							SELECT TOP 1 period
+							FROM #comparison_years_i1
+							) - (
+							SELECT TOP 1 period
+							FROM #comparison_years_i0
+							)
+						) = 0
+					THEN 1
+				ELSE (
+						(
+							SELECT TOP 1 period
+							FROM #comparison_years_i1
+							) - (
+							SELECT TOP 1 period
+							FROM #comparison_years_i0
+							)
+						)
+				END
+			) + (
+			SELECT TOP 1 ben_tt_at_noncommute_coc_race
+			FROM multiyear_results
+			WHERE analysis_id = @analysis_id
+				AND period = mr.period - 1
+			),
+		ben_tt_auto_noncommute_coc_race = (
+			(
+				SELECT TOP 1 ben_tt_auto_noncommute_coc_race
+				FROM #comparison_years_i1
+				) - (
+				SELECT TOP 1 ben_tt_auto_noncommute_coc_race
+				FROM #comparison_years_i0
+				)
+			) / (
+			CASE 
+				WHEN (
+						(
+							SELECT TOP 1 period
+							FROM #comparison_years_i1
+							) - (
+							SELECT TOP 1 period
+							FROM #comparison_years_i0
+							)
+						) = 0
+					THEN 1
+				ELSE (
+						(
+							SELECT TOP 1 period
+							FROM #comparison_years_i1
+							) - (
+							SELECT TOP 1 period
+							FROM #comparison_years_i0
+							)
+						)
+				END
+			) + (
+			SELECT TOP 1 ben_tt_auto_noncommute_coc_race
+			FROM multiyear_results
+			WHERE analysis_id = @analysis_id
+				AND period = mr.period - 1
+			),
+		ben_tt_transit_noncommute_coc_race = (
+			(
+				SELECT TOP 1 ben_tt_transit_noncommute_coc_race
+				FROM #comparison_years_i1
+				) - (
+				SELECT TOP 1 ben_tt_transit_noncommute_coc_race
+				FROM #comparison_years_i0
+				)
+			) / (
+			CASE 
+				WHEN (
+						(
+							SELECT TOP 1 period
+							FROM #comparison_years_i1
+							) - (
+							SELECT TOP 1 period
+							FROM #comparison_years_i0
+							)
+						) = 0
+					THEN 1
+				ELSE (
+						(
+							SELECT TOP 1 period
+							FROM #comparison_years_i1
+							) - (
+							SELECT TOP 1 period
+							FROM #comparison_years_i0
+							)
+						)
+				END
+			) + (
+			SELECT TOP 1 ben_tt_transit_noncommute_coc_race
+			FROM multiyear_results
+			WHERE analysis_id = @analysis_id
+				AND period = mr.period - 1
+			),
+		ben_autos_owned_coc_age = (
+			(
+				SELECT TOP 1 ben_autos_owned_coc_age
+				FROM #comparison_years_i1
+				) - (
+				SELECT TOP 1 ben_autos_owned_coc_age
+				FROM #comparison_years_i0
+				)
+			) / (
+			CASE 
+				WHEN (
+						(
+							SELECT TOP 1 period
+							FROM #comparison_years_i1
+							) - (
+							SELECT TOP 1 period
+							FROM #comparison_years_i0
+							)
+						) = 0
+					THEN 1
+				ELSE (
+						(
+							SELECT TOP 1 period
+							FROM #comparison_years_i1
+							) - (
+							SELECT TOP 1 period
+							FROM #comparison_years_i0
+							)
+						)
+				END
+			) + (
+			SELECT TOP 1 ben_autos_owned_coc_age
+			FROM multiyear_results
+			WHERE analysis_id = @analysis_id
+				AND period = mr.period - 1
+			),
+		ben_persons_phys_active_coc_age = (
+			(
+				SELECT TOP 1 ben_persons_phys_active_coc_age
+				FROM #comparison_years_i1
+				) - (
+				SELECT TOP 1 ben_persons_phys_active_coc_age
+				FROM #comparison_years_i0
+				)
+			) / (
+			CASE 
+				WHEN (
+						(
+							SELECT TOP 1 period
+							FROM #comparison_years_i1
+							) - (
+							SELECT TOP 1 period
+							FROM #comparison_years_i0
+							)
+						) = 0
+					THEN 1
+				ELSE (
+						(
+							SELECT TOP 1 period
+							FROM #comparison_years_i1
+							) - (
+							SELECT TOP 1 period
+							FROM #comparison_years_i0
+							)
+						)
+				END
+			) + (
+			SELECT TOP 1 ben_persons_phys_active_coc_age
+			FROM multiyear_results
+			WHERE analysis_id = @analysis_id
+				AND period = mr.period - 1
+			),
+
+        ben_bike_coc_age = (
+			(
+				SELECT TOP 1 ben_bike_coc_age
+				FROM #comparison_years_i1
+				) - (
+				SELECT TOP 1 ben_bike_coc_age
+				FROM #comparison_years_i0
+				)
+			) / (
+			CASE 
+				WHEN (
+						(
+							SELECT TOP 1 period
+							FROM #comparison_years_i1
+							) - (
+							SELECT TOP 1 period
+							FROM #comparison_years_i0
+							)
+						) = 0
+					THEN 1
+				ELSE (
+						(
+							SELECT TOP 1 period
+							FROM #comparison_years_i1
+							) - (
+							SELECT TOP 1 period
+							FROM #comparison_years_i0
+							)
+						)
+				END
+			) + (
+			SELECT TOP 1 ben_bike_coc_age
+			FROM multiyear_results
+			WHERE analysis_id = @analysis_id
+				AND period = mr.period - 1
+			),
+        ben_walk_coc_age = (
+			(
+				SELECT TOP 1 ben_walk_coc_age
+				FROM #comparison_years_i1
+				) - (
+				SELECT TOP 1 ben_walk_coc_age
+				FROM #comparison_years_i0
+				)
+			) / (
+			CASE 
+				WHEN (
+						(
+							SELECT TOP 1 period
+							FROM #comparison_years_i1
+							) - (
+							SELECT TOP 1 period
+							FROM #comparison_years_i0
+							)
+						) = 0
+					THEN 1
+				ELSE (
+						(
+							SELECT TOP 1 period
+							FROM #comparison_years_i1
+							) - (
+							SELECT TOP 1 period
+							FROM #comparison_years_i0
+							)
+						)
+				END
+			) + (
+			SELECT TOP 1 ben_walk_coc_age
+			FROM multiyear_results
+			WHERE analysis_id = @analysis_id
+				AND period = mr.period - 1
+			),
+
+		ben_tt_at_commute_coc_age = (
+			(
+				SELECT TOP 1 ben_tt_at_commute_coc_age
+				FROM #comparison_years_i1
+				) - (
+				SELECT TOP 1 ben_tt_at_commute_coc_age
+				FROM #comparison_years_i0
+				)
+			) / (
+			CASE 
+				WHEN (
+						(
+							SELECT TOP 1 period
+							FROM #comparison_years_i1
+							) - (
+							SELECT TOP 1 period
+							FROM #comparison_years_i0
+							)
+						) = 0
+					THEN 1
+				ELSE (
+						(
+							SELECT TOP 1 period
+							FROM #comparison_years_i1
+							) - (
+							SELECT TOP 1 period
+							FROM #comparison_years_i0
+							)
+						)
+				END
+			) + (
+			SELECT TOP 1 ben_tt_at_commute_coc_age
+			FROM multiyear_results
+			WHERE analysis_id = @analysis_id
+				AND period = mr.period - 1
+			),
+		ben_tt_auto_commute_coc_age = (
+			(
+				SELECT TOP 1 ben_tt_auto_commute_coc_age
+				FROM #comparison_years_i1
+				) - (
+				SELECT TOP 1 ben_tt_auto_commute_coc_age
+				FROM #comparison_years_i0
+				)
+			) / (
+			CASE 
+				WHEN (
+						(
+							SELECT TOP 1 period
+							FROM #comparison_years_i1
+							) - (
+							SELECT TOP 1 period
+							FROM #comparison_years_i0
+							)
+						) = 0
+					THEN 1
+				ELSE (
+						(
+							SELECT TOP 1 period
+							FROM #comparison_years_i1
+							) - (
+							SELECT TOP 1 period
+							FROM #comparison_years_i0
+							)
+						)
+				END
+			) + (
+			SELECT TOP 1 ben_tt_auto_commute_coc_age
+			FROM multiyear_results
+			WHERE analysis_id = @analysis_id
+				AND period = mr.period - 1
+			),
+		ben_tt_transit_commute_coc_age = (
+			(
+				SELECT TOP 1 ben_tt_transit_commute_coc_age
+				FROM #comparison_years_i1
+				) - (
+				SELECT TOP 1 ben_tt_transit_commute_coc_age
+				FROM #comparison_years_i0
+				)
+			) / (
+			CASE 
+				WHEN (
+						(
+							SELECT TOP 1 period
+							FROM #comparison_years_i1
+							) - (
+							SELECT TOP 1 period
+							FROM #comparison_years_i0
+							)
+						) = 0
+					THEN 1
+				ELSE (
+						(
+							SELECT TOP 1 period
+							FROM #comparison_years_i1
+							) - (
+							SELECT TOP 1 period
+							FROM #comparison_years_i0
+							)
+						)
+				END
+			) + (
+			SELECT TOP 1 ben_tt_transit_commute_coc_age
+			FROM multiyear_results
+			WHERE analysis_id = @analysis_id
+				AND period = mr.period - 1
+			),
+		ben_tt_at_noncommute_coc_age = (
+			(
+				SELECT TOP 1 ben_tt_at_noncommute_coc_age
+				FROM #comparison_years_i1
+				) - (
+				SELECT TOP 1 ben_tt_at_noncommute_coc_age
+				FROM #comparison_years_i0
+				)
+			) / (
+			CASE 
+				WHEN (
+						(
+							SELECT TOP 1 period
+							FROM #comparison_years_i1
+							) - (
+							SELECT TOP 1 period
+							FROM #comparison_years_i0
+							)
+						) = 0
+					THEN 1
+				ELSE (
+						(
+							SELECT TOP 1 period
+							FROM #comparison_years_i1
+							) - (
+							SELECT TOP 1 period
+							FROM #comparison_years_i0
+							)
+						)
+				END
+			) + (
+			SELECT TOP 1 ben_tt_at_noncommute_coc_age
+			FROM multiyear_results
+			WHERE analysis_id = @analysis_id
+				AND period = mr.period - 1
+			),
+		ben_tt_auto_noncommute_coc_age = (
+			(
+				SELECT TOP 1 ben_tt_auto_noncommute_coc_age
+				FROM #comparison_years_i1
+				) - (
+				SELECT TOP 1 ben_tt_auto_noncommute_coc_age
+				FROM #comparison_years_i0
+				)
+			) / (
+			CASE 
+				WHEN (
+						(
+							SELECT TOP 1 period
+							FROM #comparison_years_i1
+							) - (
+							SELECT TOP 1 period
+							FROM #comparison_years_i0
+							)
+						) = 0
+					THEN 1
+				ELSE (
+						(
+							SELECT TOP 1 period
+							FROM #comparison_years_i1
+							) - (
+							SELECT TOP 1 period
+							FROM #comparison_years_i0
+							)
+						)
+				END
+			) + (
+			SELECT TOP 1 ben_tt_auto_noncommute_coc_age
+			FROM multiyear_results
+			WHERE analysis_id = @analysis_id
+				AND period = mr.period - 1
+			),
+		ben_tt_transit_noncommute_coc_age = (
+			(
+				SELECT TOP 1 ben_tt_transit_noncommute_coc_age
+				FROM #comparison_years_i1
+				) - (
+				SELECT TOP 1 ben_tt_transit_noncommute_coc_age
+				FROM #comparison_years_i0
+				)
+			) / (
+			CASE 
+				WHEN (
+						(
+							SELECT TOP 1 period
+							FROM #comparison_years_i1
+							) - (
+							SELECT TOP 1 period
+							FROM #comparison_years_i0
+							)
+						) = 0
+					THEN 1
+				ELSE (
+						(
+							SELECT TOP 1 period
+							FROM #comparison_years_i1
+							) - (
+							SELECT TOP 1 period
+							FROM #comparison_years_i0
+							)
+						)
+				END
+			) + (
+			SELECT TOP 1 ben_tt_transit_noncommute_coc_age
+			FROM multiyear_results
+			WHERE analysis_id = @analysis_id
+				AND period = mr.period - 1
+			),
+		ben_autos_owned_coc_poverty = (
+			(
+				SELECT TOP 1 ben_autos_owned_coc_poverty
+				FROM #comparison_years_i1
+				) - (
+				SELECT TOP 1 ben_autos_owned_coc_poverty
+				FROM #comparison_years_i0
+				)
+			) / (
+			CASE 
+				WHEN (
+						(
+							SELECT TOP 1 period
+							FROM #comparison_years_i1
+							) - (
+							SELECT TOP 1 period
+							FROM #comparison_years_i0
+							)
+						) = 0
+					THEN 1
+				ELSE (
+						(
+							SELECT TOP 1 period
+							FROM #comparison_years_i1
+							) - (
+							SELECT TOP 1 period
+							FROM #comparison_years_i0
+							)
+						)
+				END
+			) + (
+			SELECT TOP 1 ben_autos_owned_coc_poverty
+			FROM multiyear_results
+			WHERE analysis_id = @analysis_id
+				AND period = mr.period - 1
+			),
+		ben_persons_phys_active_coc_poverty = (
+			(
+				SELECT TOP 1 ben_persons_phys_active_coc_poverty
+				FROM #comparison_years_i1
+				) - (
+				SELECT TOP 1 ben_persons_phys_active_coc_poverty
+				FROM #comparison_years_i0
+				)
+			) / (
+			CASE 
+				WHEN (
+						(
+							SELECT TOP 1 period
+							FROM #comparison_years_i1
+							) - (
+							SELECT TOP 1 period
+							FROM #comparison_years_i0
+							)
+						) = 0
+					THEN 1
+				ELSE (
+						(
+							SELECT TOP 1 period
+							FROM #comparison_years_i1
+							) - (
+							SELECT TOP 1 period
+							FROM #comparison_years_i0
+							)
+						)
+				END
+			) + (
+			SELECT TOP 1 ben_persons_phys_active_coc_poverty
+			FROM multiyear_results
+			WHERE analysis_id = @analysis_id
+				AND period = mr.period - 1
+			),
+
+        ben_bike_coc_poverty = (
+			(
+				SELECT TOP 1 ben_bike_coc_poverty
+				FROM #comparison_years_i1
+				) - (
+				SELECT TOP 1 ben_bike_coc_poverty
+				FROM #comparison_years_i0
+				)
+			) / (
+			CASE 
+				WHEN (
+						(
+							SELECT TOP 1 period
+							FROM #comparison_years_i1
+							) - (
+							SELECT TOP 1 period
+							FROM #comparison_years_i0
+							)
+						) = 0
+					THEN 1
+				ELSE (
+						(
+							SELECT TOP 1 period
+							FROM #comparison_years_i1
+							) - (
+							SELECT TOP 1 period
+							FROM #comparison_years_i0
+							)
+						)
+				END
+			) + (
+			SELECT TOP 1 ben_bike_coc_poverty
+			FROM multiyear_results
+			WHERE analysis_id = @analysis_id
+				AND period = mr.period - 1
+			),
+        ben_walk_coc_poverty = (
+			(
+				SELECT TOP 1 ben_walk_coc_poverty
+				FROM #comparison_years_i1
+				) - (
+				SELECT TOP 1 ben_walk_coc_poverty
+				FROM #comparison_years_i0
+				)
+			) / (
+			CASE 
+				WHEN (
+						(
+							SELECT TOP 1 period
+							FROM #comparison_years_i1
+							) - (
+							SELECT TOP 1 period
+							FROM #comparison_years_i0
+							)
+						) = 0
+					THEN 1
+				ELSE (
+						(
+							SELECT TOP 1 period
+							FROM #comparison_years_i1
+							) - (
+							SELECT TOP 1 period
+							FROM #comparison_years_i0
+							)
+						)
+				END
+			) + (
+			SELECT TOP 1 ben_walk_coc_poverty
+			FROM multiyear_results
+			WHERE analysis_id = @analysis_id
+				AND period = mr.period - 1
+			),
+
+		ben_tt_at_commute_coc_poverty = (
+			(
+				SELECT TOP 1 ben_tt_at_commute_coc_poverty
+				FROM #comparison_years_i1
+				) - (
+				SELECT TOP 1 ben_tt_at_commute_coc_poverty
+				FROM #comparison_years_i0
+				)
+			) / (
+			CASE 
+				WHEN (
+						(
+							SELECT TOP 1 period
+							FROM #comparison_years_i1
+							) - (
+							SELECT TOP 1 period
+							FROM #comparison_years_i0
+							)
+						) = 0
+					THEN 1
+				ELSE (
+						(
+							SELECT TOP 1 period
+							FROM #comparison_years_i1
+							) - (
+							SELECT TOP 1 period
+							FROM #comparison_years_i0
+							)
+						)
+				END
+			) + (
+			SELECT TOP 1 ben_tt_at_commute_coc_poverty
+			FROM multiyear_results
+			WHERE analysis_id = @analysis_id
+				AND period = mr.period - 1
+			),
+		ben_tt_auto_commute_coc_poverty = (
+			(
+				SELECT TOP 1 ben_tt_auto_commute_coc_poverty
+				FROM #comparison_years_i1
+				) - (
+				SELECT TOP 1 ben_tt_auto_commute_coc_poverty
+				FROM #comparison_years_i0
+				)
+			) / (
+			CASE 
+				WHEN (
+						(
+							SELECT TOP 1 period
+							FROM #comparison_years_i1
+							) - (
+							SELECT TOP 1 period
+							FROM #comparison_years_i0
+							)
+						) = 0
+					THEN 1
+				ELSE (
+						(
+							SELECT TOP 1 period
+							FROM #comparison_years_i1
+							) - (
+							SELECT TOP 1 period
+							FROM #comparison_years_i0
+							)
+						)
+				END
+			) + (
+			SELECT TOP 1 ben_tt_auto_commute_coc_poverty
+			FROM multiyear_results
+			WHERE analysis_id = @analysis_id
+				AND period = mr.period - 1
+			),
+		ben_tt_transit_commute_coc_poverty = (
+			(
+				SELECT TOP 1 ben_tt_transit_commute_coc_poverty
+				FROM #comparison_years_i1
+				) - (
+				SELECT TOP 1 ben_tt_transit_commute_coc_poverty
+				FROM #comparison_years_i0
+				)
+			) / (
+			CASE 
+				WHEN (
+						(
+							SELECT TOP 1 period
+							FROM #comparison_years_i1
+							) - (
+							SELECT TOP 1 period
+							FROM #comparison_years_i0
+							)
+						) = 0
+					THEN 1
+				ELSE (
+						(
+							SELECT TOP 1 period
+							FROM #comparison_years_i1
+							) - (
+							SELECT TOP 1 period
+							FROM #comparison_years_i0
+							)
+						)
+				END
+			) + (
+			SELECT TOP 1 ben_tt_transit_commute_coc_poverty
+			FROM multiyear_results
+			WHERE analysis_id = @analysis_id
+				AND period = mr.period - 1
+			),
+		ben_tt_at_noncommute_coc_poverty = (
+			(
+				SELECT TOP 1 ben_tt_at_noncommute_coc_poverty
+				FROM #comparison_years_i1
+				) - (
+				SELECT TOP 1 ben_tt_at_noncommute_coc_poverty
+				FROM #comparison_years_i0
+				)
+			) / (
+			CASE 
+				WHEN (
+						(
+							SELECT TOP 1 period
+							FROM #comparison_years_i1
+							) - (
+							SELECT TOP 1 period
+							FROM #comparison_years_i0
+							)
+						) = 0
+					THEN 1
+				ELSE (
+						(
+							SELECT TOP 1 period
+							FROM #comparison_years_i1
+							) - (
+							SELECT TOP 1 period
+							FROM #comparison_years_i0
+							)
+						)
+				END
+			) + (
+			SELECT TOP 1 ben_tt_at_noncommute_coc_poverty
+			FROM multiyear_results
+			WHERE analysis_id = @analysis_id
+				AND period = mr.period - 1
+			),
+		ben_tt_auto_noncommute_coc_poverty = (
+			(
+				SELECT TOP 1 ben_tt_auto_noncommute_coc_poverty
+				FROM #comparison_years_i1
+				) - (
+				SELECT TOP 1 ben_tt_auto_noncommute_coc_poverty
+				FROM #comparison_years_i0
+				)
+			) / (
+			CASE 
+				WHEN (
+						(
+							SELECT TOP 1 period
+							FROM #comparison_years_i1
+							) - (
+							SELECT TOP 1 period
+							FROM #comparison_years_i0
+							)
+						) = 0
+					THEN 1
+				ELSE (
+						(
+							SELECT TOP 1 period
+							FROM #comparison_years_i1
+							) - (
+							SELECT TOP 1 period
+							FROM #comparison_years_i0
+							)
+						)
+				END
+			) + (
+			SELECT TOP 1 ben_tt_auto_noncommute_coc_poverty
+			FROM multiyear_results
+			WHERE analysis_id = @analysis_id
+				AND period = mr.period - 1
+			),
+		ben_tt_transit_noncommute_coc_poverty = (
+			(
+				SELECT TOP 1 ben_tt_transit_noncommute_coc_poverty
+				FROM #comparison_years_i1
+				) - (
+				SELECT TOP 1 ben_tt_transit_noncommute_coc_poverty
+				FROM #comparison_years_i0
+				)
+			) / (
+			CASE 
+				WHEN (
+						(
+							SELECT TOP 1 period
+							FROM #comparison_years_i1
+							) - (
+							SELECT TOP 1 period
+							FROM #comparison_years_i0
+							)
+						) = 0
+					THEN 1
+				ELSE (
+						(
+							SELECT TOP 1 period
+							FROM #comparison_years_i1
+							) - (
+							SELECT TOP 1 period
+							FROM #comparison_years_i0
+							)
+						)
+				END
+			) + (
+			SELECT TOP 1 ben_tt_transit_noncommute_coc_poverty
+			FROM multiyear_results
+			WHERE analysis_id = @analysis_id
+				AND period = mr.period - 1
+			),
+		persons = (
+			(
+				SELECT TOP 1 persons
+				FROM #comparison_years_i1
+				) - (
+				SELECT TOP 1 persons
+				FROM #comparison_years_i0
+				)
+			) / (
+			CASE 
+				WHEN (
+						(
+							SELECT TOP 1 period
+							FROM #comparison_years_i1
+							) - (
+							SELECT TOP 1 period
+							FROM #comparison_years_i0
+							)
+						) = 0
+					THEN 1
+				ELSE (
+						(
+							SELECT TOP 1 period
+							FROM #comparison_years_i1
+							) - (
+							SELECT TOP 1 period
+							FROM #comparison_years_i0
+							)
+						)
+				END
+			) + (
+			SELECT TOP 1 persons
+			FROM multiyear_results
+			WHERE analysis_id = @analysis_id
+				AND period = mr.period - 1
+			),
+		persons_coc = (
+			(
+				SELECT TOP 1 persons_coc
+				FROM #comparison_years_i1
+				) - (
+				SELECT TOP 1 persons_coc
+				FROM #comparison_years_i0
+				)
+			) / (
+			CASE 
+				WHEN (
+						(
+							SELECT TOP 1 period
+							FROM #comparison_years_i1
+							) - (
+							SELECT TOP 1 period
+							FROM #comparison_years_i0
+							)
+						) = 0
+					THEN 1
+				ELSE (
+						(
+							SELECT TOP 1 period
+							FROM #comparison_years_i1
+							) - (
+							SELECT TOP 1 period
+							FROM #comparison_years_i0
+							)
+						)
+				END
+			) + (
+			SELECT TOP 1 persons_coc
+			FROM multiyear_results
+			WHERE analysis_id = @analysis_id
+				AND period = mr.period - 1
+			),
+		persons_coc_race = (
+			(
+				SELECT TOP 1 persons_coc_race
+				FROM #comparison_years_i1
+				) - (
+				SELECT TOP 1 persons_coc_race
+				FROM #comparison_years_i0
+				)
+			) / (
+			CASE 
+				WHEN (
+						(
+							SELECT TOP 1 period
+							FROM #comparison_years_i1
+							) - (
+							SELECT TOP 1 period
+							FROM #comparison_years_i0
+							)
+						) = 0
+					THEN 1
+				ELSE (
+						(
+							SELECT TOP 1 period
+							FROM #comparison_years_i1
+							) - (
+							SELECT TOP 1 period
+							FROM #comparison_years_i0
+							)
+						)
+				END
+			) + (
+			SELECT TOP 1 persons_coc_race
+			FROM multiyear_results
+			WHERE analysis_id = @analysis_id
+				AND period = mr.period - 1
+			),
+		persons_coc_age = (
+			(
+				SELECT TOP 1 persons_coc_age
+				FROM #comparison_years_i1
+				) - (
+				SELECT TOP 1 persons_coc_age
+				FROM #comparison_years_i0
+				)
+			) / (
+			CASE 
+				WHEN (
+						(
+							SELECT TOP 1 period
+							FROM #comparison_years_i1
+							) - (
+							SELECT TOP 1 period
+							FROM #comparison_years_i0
+							)
+						) = 0
+					THEN 1
+				ELSE (
+						(
+							SELECT TOP 1 period
+							FROM #comparison_years_i1
+							) - (
+							SELECT TOP 1 period
+							FROM #comparison_years_i0
+							)
+						)
+				END
+			) + (
+			SELECT TOP 1 persons_coc_age
+			FROM multiyear_results
+			WHERE analysis_id = @analysis_id
+				AND period = mr.period - 1
+			),
+		persons_coc_poverty = (
+			(
+				SELECT TOP 1 persons_coc_poverty
+				FROM #comparison_years_i1
+				) - (
+				SELECT TOP 1 persons_coc_poverty
+				FROM #comparison_years_i0
+				)
+			) / (
+			CASE 
+				WHEN (
+						(
+							SELECT TOP 1 period
+							FROM #comparison_years_i1
+							) - (
+							SELECT TOP 1 period
+							FROM #comparison_years_i0
+							)
+						) = 0
+					THEN 1
+				ELSE (
+						(
+							SELECT TOP 1 period
+							FROM #comparison_years_i1
+							) - (
+							SELECT TOP 1 period
+							FROM #comparison_years_i0
 							)
 						)
 				END
