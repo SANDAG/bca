@@ -12,7 +12,7 @@ CREATE TABLE [bca].[analysis] (
 	,[year_intermediate_4]	integer			NULL
 	,[year_intermediate_5]	integer			NULL
 	,[year_end]				smallint		NULL
-	,[inflation_rate]		float			NULL
+	--,[inflation_rate]		float			NULL
 	,[discount_rate]		float			NULL
 	,[annualization_factor]	float			NULL
 	,[last_update_date]		date			NOT NULL
@@ -39,7 +39,7 @@ CREATE TABLE [bca].[analysis_parameters] (
 	,[vor_truck_light]				float		NULL
 	,[vor_truck_medium]				float		NULL
 	,[vor_truck_heavy]				float		NULL
-	,[vot_uniform]					float		NULL -- always null?
+	--,[vot_uniform]					float		NULL -- always null?
 	,[ovt_weight]					float		NULL
 	,[ovt_time_multiplier]			float		NULL
 	,[voc_auto]						float		NULL
@@ -47,8 +47,8 @@ CREATE TABLE [bca].[analysis_parameters] (
 	,[voc_truck_medium]				float		NULL
 	,[voc_truck_heavy]				float		NULL
 	,[aoc_auto]						float		NULL
-	,[phys_activity_threshold]		float		NULL -- not used with walk/bike and continuous?
-	,[cost_phys_activ]				float		NULL -- not used?
+	--,[phys_activity_threshold]		float		NULL -- not used with walk/bike and continuous?
+	--,[cost_phys_activ]				float		NULL -- not used?
 	,[crash_rate_fatal]				float		NULL
 	,[crash_rate_injury]			float		NULL
 	,[crash_rate_pdo]				float		NULL
@@ -63,7 +63,7 @@ CREATE TABLE [bca].[analysis_parameters] (
 	,[so2_value]					float		NULL
 	,[co_value]						float		NULL
 	,[pm_10_value]					float		NULL
-	,[inflation_rate]				float		NULL -- always 0? costs external
+	--,[inflation_rate]				float		NULL -- always 0? costs external
     ,[discount_rate]				float		NULL -- not sure if used
 	,[coc_age_thresh]				integer		NULL
 	,[coc_race_thresh]				integer		NULL
@@ -118,7 +118,7 @@ CREATE TABLE [bca].[scenario_comparison] (
 	,[vor_truck_light]							float		NULL
 	,[vor_truck_medium]							float		NULL
 	,[vor_truck_heavy]							float		NULL
-	,[vot_uniform]								float		NULL
+	--,[vot_uniform]								float		NULL
 	,[ovt_weight]								float		NULL
 	,[ovt_time_multiplier]						float		NULL
 	,[voc_auto]									float		NULL
@@ -126,8 +126,8 @@ CREATE TABLE [bca].[scenario_comparison] (
 	,[voc_truck_medium]							float		NULL
 	,[voc_truck_heavy]							float		NULL
 	,[aoc_auto]									float		NULL
-	,[phys_activity_threshold]					float		NULL
-	,[cost_phys_activ]							float		NULL
+	--,[phys_activity_threshold]					float		NULL
+	--,[cost_phys_activ]							float		NULL
 	,[crash_rate_fatal]							float		NULL
     ,[crash_rate_injury]						float		NULL
     ,[crash_rate_pdo]							float		NULL
@@ -141,7 +141,7 @@ CREATE TABLE [bca].[scenario_comparison] (
     ,[so2_value]								float		NULL
     ,[co_value]									float		NULL
     ,[pm10_value]								float		NULL
-    ,[rate_inflation]							float		NULL
+    --,[rate_inflation]							float		NULL
     ,[rate_discount]							float		NULL
     ,[coc_age_thresh]							integer		NULL
     ,[coc_race_thresh]							integer		NULL
@@ -203,10 +203,10 @@ CREATE TABLE [bca].[scenario_comparison] (
     ,[ben_autos_owned]							float		NULL
     ,[diff_autos_owned_coc]						integer		NULL
     ,[ben_autos_owned_coc]						float		NULL
-    ,[diff_persons_phys_active]					integer		NULL
-    ,[ben_persons_phys_active]					float		NULL
-    ,[diff_persons_phys_active_coc]				integer		NULL
-    ,[ben_persons_phys_active_coc]				float		NULL
+    --,[diff_persons_phys_active]					integer		NULL
+    --,[ben_persons_phys_active]					float		NULL
+    --,[diff_persons_phys_active_coc]				integer		NULL
+    --,[ben_persons_phys_active_coc]				float		NULL
     ,[diff_co2]									integer		NULL
     ,[diff_pm25]								integer		NULL
     ,[diff_nox]									integer		NULL
@@ -243,16 +243,16 @@ CREATE TABLE [bca].[scenario_comparison] (
     ,[build_tt_truck]							float		NULL
     ,[base_tt_person]							float		NULL
     ,[build_tt_person]							float		NULL
-    ,[base_cost_persons_phys_active]			float		NULL
-    ,[build_cost_persons_phys_active]			float		NULL
+    --,[base_cost_persons_phys_active]			float		NULL
+    --,[build_cost_persons_phys_active]			float		NULL
     ,[base_cost_autos_owned]					float		NULL
     ,[build_cost_autos_owned]					float		NULL
-    ,[diff_persons_phys_active_coc_race]		float		NULL
-    ,[ben_persons_phys_active_coc_race]			float		NULL
-    ,[diff_persons_phys_active_coc_age]			float		NULL
-    ,[ben_persons_phys_active_coc_age]			float		NULL
-    ,[diff_persons_phys_active_coc_poverty]		float		NULL
-    ,[ben_persons_phys_active_coc_poverty]		float		NULL
+    --,[diff_persons_phys_active_coc_race]		float		NULL
+    --,[ben_persons_phys_active_coc_race]			float		NULL
+    --,[diff_persons_phys_active_coc_age]			float		NULL
+    --,[ben_persons_phys_active_coc_age]			float		NULL
+    --,[diff_persons_phys_active_coc_poverty]		float		NULL
+    --,[ben_persons_phys_active_coc_poverty]		float		NULL
     ,[ben_autos_owned_coc_race]					float		NULL
     ,[ben_autos_owned_coc_age]					float		NULL
     ,[ben_autos_owned_coc_poverty]				float		NULL
@@ -313,7 +313,7 @@ EXECUTE [db_meta].[add_xp] 'bca.analysis.year_intermediate_3', 'MS_Description',
 EXECUTE [db_meta].[add_xp] 'bca.analysis.year_intermediate_4', 'MS_Description', 'intermediate year 4'
 EXECUTE [db_meta].[add_xp] 'bca.analysis.year_intermediate_5', 'MS_Description', 'intermediate year 5'
 EXECUTE [db_meta].[add_xp] 'bca.analysis.year_end', 'MS_Description', 'analysis end year'
-EXECUTE [db_meta].[add_xp] 'bca.analysis.inflation_rate', 'MS_Description', 'inflation rate'
+--EXECUTE [db_meta].[add_xp] 'bca.analysis.inflation_rate', 'MS_Description', 'inflation rate'
 EXECUTE [db_meta].[add_xp] 'bca.analysis.discount_rate', 'MS_Description', 'discount rate'
 EXECUTE [db_meta].[add_xp] 'bca.analysis.annualization_factor', 'MS_Description', 'abm scenario annualization factor'
 EXECUTE [db_meta].[add_xp] 'bca.analysis.last_update_date', 'MS_Description', 'date of last analysis update'

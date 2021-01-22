@@ -42,8 +42,8 @@ CREATE TABLE [bca].[multiyear_results] (
 	,[ben_crashcost_inj]								float		NULL
 	,[ben_crashcost_pdo]								float		NULL
 	,[subtotal_ben_safety]								float		NULL
-	,[ben_persons_phys_active_coc]						float		NULL
-	,[ben_persons_phys_active]							float		NULL
+	--,[ben_persons_phys_active_coc]						float		NULL
+	--,[ben_persons_phys_active]							float		NULL
 	,[ben_relcost_auto]									float		NULL
 	,[ben_relcost_truck_hvy]							float		NULL
 	,[ben_relcost_truck_lht]							float		NULL
@@ -77,13 +77,13 @@ CREATE TABLE [bca].[multiyear_results] (
 	,[toll_rev_build]									float		NULL
 	,[fare_rev_base]									float		NULL
 	,[fare_rev_build]									float		NULL
-	,[cost_capital]										float		NULL
-	,[cost_om]											float		NULL
-	,[cost_finance]										float		NULL
+	--,[cost_capital]										float		NULL
+	--,[cost_om]											float		NULL
+	--,[cost_finance]										float		NULL
 	,[benefit_total_undiscounted]						float		NULL
-	,[cost_total_undiscounted]							float		NULL
+	--,[cost_total_undiscounted]							float		NULL
 	,[benefit_total_discounted]							float		NULL
-	,[cost_total_discounted]							float		NULL
+	--,[cost_total_discounted]							float		NULL
 	,[net_annual_undiscounted]							float		NULL
 	,[net_annual_discounted]							float		NULL
 	,[toll_rev_base_discounted]							float		NULL
@@ -93,17 +93,17 @@ CREATE TABLE [bca].[multiyear_results] (
 	,[benefit_emissions_discounted]						float		NULL
 	,[benefit_autos_owned_discounted]					float		NULL
 	,[benefit_safety_discounted]						float		NULL
-	,[benefit_phys_active_discounted]					float		NULL
+	--,[benefit_phys_active_discounted]					float		NULL
 	,[benefit_reliability_discounted]					float		NULL
 	,[benefit_tt_commute_discounted]					float		NULL
 	,[benefit_tt_noncommute_discounted]					float		NULL
 	,[benefit_tt_freight_discounted]					float		NULL
 	,[benefit_voc_discounted]							float		NULL
-	,[cost_capital_discounted]							float		NULL
-	,[cost_om_discounted]								float		NULL
-	,[cost_finance_discounted]							float		NULL
+	--,[cost_capital_discounted]							float		NULL
+	--,[cost_om_discounted]								float		NULL
+	--,[cost_finance_discounted]							float		NULL
 	,[benefit_autos_owned_discounted_coc]				float		NULL
-	,[benefit_phys_active_discounted_coc]				float		NULL
+	--,[benefit_phys_active_discounted_coc]				float		NULL
 	,[benefit_tt_commute_discounted_coc]				float		NULL
 	,[benefit_tt_noncommute_discounted_coc]				float		NULL
 	,[base_tt_person]									float		NULL
@@ -119,9 +119,9 @@ CREATE TABLE [bca].[multiyear_results] (
 	,[ben_autos_owned_coc_race]							float		NULL
 	,[ben_autos_owned_coc_age]							float		NULL
 	,[ben_autos_owned_coc_poverty]						float		NULL
-	,[ben_persons_phys_active_coc_race]					float		NULL
-	,[ben_persons_phys_active_coc_age]					float		NULL
-	,[ben_persons_phys_active_coc_poverty]				float		NULL
+	--,[ben_persons_phys_active_coc_race]					float		NULL
+	--,[ben_persons_phys_active_coc_age]					float		NULL
+	--,[ben_persons_phys_active_coc_poverty]				float		NULL
 	,[ben_tt_at_commute_coc_race]						float		NULL
 	,[ben_tt_at_commute_coc_age]						float		NULL
 	,[ben_tt_at_commute_coc_poverty]					float		NULL
@@ -149,9 +149,9 @@ CREATE TABLE [bca].[multiyear_results] (
 	,[benefit_autos_owned_discounted_coc_race]			float		NULL
 	,[benefit_autos_owned_discounted_coc_age]			float		NULL
 	,[benefit_autos_owned_discounted_coc_poverty]		float		NULL
-	,[benefit_phys_active_discounted_coc_race]			float		NULL
-	,[benefit_phys_active_discounted_coc_age]			float		NULL
-	,[benefit_phys_active_discounted_coc_poverty]		float		NULL
+	--,[benefit_phys_active_discounted_coc_race]			float		NULL
+	--,[benefit_phys_active_discounted_coc_age]			float		NULL
+	--,[benefit_phys_active_discounted_coc_poverty]		float		NULL
 	,[benefit_tt_commute_discounted_coc_race]			float		NULL
 	,[benefit_tt_commute_discounted_coc_age]			float		NULL
 	,[benefit_tt_commute_discounted_coc_poverty]		float		NULL
