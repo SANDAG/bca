@@ -307,6 +307,7 @@ EXECUTE [db_meta].[add_xp] 'bca.analysis.title', 'MS_Description', 'analysis tit
 EXECUTE [db_meta].[add_xp] 'bca.analysis.description', 'MS_Description', 'description of analysis'
 EXECUTE [db_meta].[add_xp] 'bca.analysis.year_reference', 'MS_Description', 'reference year'
 EXECUTE [db_meta].[add_xp] 'bca.analysis.year_start', 'MS_Description', 'analysis start year'
+EXECUTE [db_meta].[add_xp] 'bca.analysis.year_present', 'MS_Description', 'current year'
 EXECUTE [db_meta].[add_xp] 'bca.analysis.year_intermediate_1', 'MS_Description', 'intermediate year 1'
 EXECUTE [db_meta].[add_xp] 'bca.analysis.year_intermediate_2', 'MS_Description', 'intermediate year 2'
 EXECUTE [db_meta].[add_xp] 'bca.analysis.year_intermediate_3', 'MS_Description', 'intermediate year 3'
