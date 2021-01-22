@@ -18165,30 +18165,21 @@ COMMIT TRANSACTION
 BEGIN TRANSACTION
 
 UPDATE multiyear_results
-SET subtotal_ben_emissions = isnull(ben_co, 0) + isnull(ben_co2, 0) + isnull(ben_nox, 0) + isnull(ben_pm10, 0) + isnull(ben_pm25, 0) + isnull(ben_rogs, 0) + 
-	isnull(ben_so2, 0),
-	subtotal_ben_safety = isnull(ben_crashcost_fat, 0) + isnull(ben_crashcost_inj, 0) + isnull(ben_crashcost_pdo, 0),
-	subtotal_ben_reliability = isnull(ben_relcost_auto, 0) + isnull(ben_relcost_truck_hvy, 0) + isnull(ben_relcost_truck_lht, 0) + isnull(
-		ben_relcost_truck_med, 0),
-	subtotal_ben_tt_commute = isnull(ben_tt_at_commute, 0) + isnull(ben_tt_auto_commute, 0) + isnull(ben_tt_transit_commute, 0),
-	subtotal_ben_tt_noncommute = isnull(ben_tt_at_noncommute, 0) + isnull(ben_tt_auto_noncommute, 0) + isnull(ben_tt_transit_noncommute, 0),
-	subtotal_ben_tt_commute_coc = isnull(ben_tt_at_commute_coc, 0) + isnull(ben_tt_auto_commute_coc, 0) + isnull(ben_tt_transit_commute_coc, 0),
-	subtotal_ben_tt_noncommute_coc = isnull(ben_tt_at_noncommute_coc, 0) + isnull(ben_tt_auto_noncommute_coc, 0) + isnull(
-		ben_tt_transit_noncommute_coc, 0),
-	subtotal_ben_tt_commute_coc_race = isnull(ben_tt_at_commute_coc_race, 0) + isnull(ben_tt_auto_commute_coc_race, 0) + isnull(
-		ben_tt_transit_commute_coc_race, 0),
-	subtotal_ben_tt_noncommute_coc_race = isnull(ben_tt_at_noncommute_coc_race, 0) + isnull(ben_tt_auto_noncommute_coc_race, 0) + isnull(
-		ben_tt_transit_noncommute_coc_race, 0),
-	subtotal_ben_tt_commute_coc_age = isnull(ben_tt_at_commute_coc_age, 0) + isnull(ben_tt_auto_commute_coc_age, 0) + isnull(
-		ben_tt_transit_commute_coc_age, 0),
-	subtotal_ben_tt_noncommute_coc_age = isnull(ben_tt_at_noncommute_coc_age, 0) + isnull(ben_tt_auto_noncommute_coc_age, 0) + isnull(
-		ben_tt_transit_noncommute_coc_age, 0),
-	subtotal_ben_tt_commute_coc_poverty = isnull(ben_tt_at_commute_coc_poverty, 0) + isnull(ben_tt_auto_commute_coc_poverty, 0) + isnull(
-		ben_tt_transit_commute_coc_poverty, 0),
-	subtotal_ben_tt_noncommute_coc_poverty = isnull(ben_tt_at_noncommute_coc_poverty, 0) + isnull(ben_tt_auto_noncommute_coc_poverty, 0) + isnull(
-		ben_tt_transit_noncommute_coc_poverty, 0),
-	subtotal_ben_freight = isnull(ben_tt_comm, 0) + isnull(ben_tt_truck, 0),
-	subtotal_ben_voc = isnull(ben_voc_auto, 0) + isnull(ben_voc_truck_lht, 0) + isnull(ben_voc_truck_med, 0) + isnull(ben_voc_truck_hvy, 0)
+SET subtotal_ben_emissions					= isnull(ben_co, 0) + isnull(ben_co2, 0) + isnull(ben_nox, 0) + isnull(ben_pm10, 0) + isnull(ben_pm25, 0) + isnull(ben_rogs, 0) + isnull(ben_so2, 0),
+	subtotal_ben_safety						= isnull(ben_crashcost_fat, 0) + isnull(ben_crashcost_inj, 0) + isnull(ben_crashcost_pdo, 0),
+	subtotal_ben_reliability				= isnull(ben_relcost_auto, 0) + isnull(ben_relcost_truck_hvy, 0) + isnull(ben_relcost_truck_lht, 0) + isnull(ben_relcost_truck_med, 0),
+	subtotal_ben_tt_commute					= isnull(ben_tt_at_commute, 0) + isnull(ben_tt_auto_commute, 0) + isnull(ben_tt_transit_commute, 0),
+	subtotal_ben_tt_noncommute				= isnull(ben_tt_at_noncommute, 0) + isnull(ben_tt_auto_noncommute, 0) + isnull(ben_tt_transit_noncommute, 0),
+	subtotal_ben_tt_commute_coc				= isnull(ben_tt_at_commute_coc, 0) + isnull(ben_tt_auto_commute_coc, 0) + isnull(ben_tt_transit_commute_coc, 0),
+	subtotal_ben_tt_noncommute_coc			= isnull(ben_tt_at_noncommute_coc, 0) + isnull(ben_tt_auto_noncommute_coc, 0) + isnull(ben_tt_transit_noncommute_coc, 0),
+	subtotal_ben_tt_commute_coc_race		= isnull(ben_tt_at_commute_coc_race, 0) + isnull(ben_tt_auto_commute_coc_race, 0) + isnull(ben_tt_transit_commute_coc_race, 0),
+	subtotal_ben_tt_noncommute_coc_race		= isnull(ben_tt_at_noncommute_coc_race, 0) + isnull(ben_tt_auto_noncommute_coc_race, 0) + isnull(ben_tt_transit_noncommute_coc_race, 0),
+	subtotal_ben_tt_commute_coc_age			= isnull(ben_tt_at_commute_coc_age, 0) + isnull(ben_tt_auto_commute_coc_age, 0) + isnull(ben_tt_transit_commute_coc_age, 0),
+	subtotal_ben_tt_noncommute_coc_age		= isnull(ben_tt_at_noncommute_coc_age, 0) + isnull(ben_tt_auto_noncommute_coc_age, 0) + isnull(ben_tt_transit_noncommute_coc_age, 0),
+	subtotal_ben_tt_commute_coc_poverty		= isnull(ben_tt_at_commute_coc_poverty, 0) + isnull(ben_tt_auto_commute_coc_poverty, 0) + isnull(ben_tt_transit_commute_coc_poverty, 0),
+	subtotal_ben_tt_noncommute_coc_poverty	= isnull(ben_tt_at_noncommute_coc_poverty, 0) + isnull(ben_tt_auto_noncommute_coc_poverty, 0) + isnull(ben_tt_transit_noncommute_coc_poverty, 0),
+	subtotal_ben_freight					= isnull(ben_tt_comm, 0) + isnull(ben_tt_truck, 0),
+	subtotal_ben_voc						= isnull(ben_voc_auto, 0) + isnull(ben_voc_truck_lht, 0) + isnull(ben_voc_truck_med, 0) + isnull(ben_voc_truck_hvy, 0)
 FROM multiyear_results
 WHERE analysis_id = @analysis_id;
 
@@ -18199,7 +18190,7 @@ SET benefit_total_undiscounted = isnull(subtotal_ben_emissions, 0) + isnull(ben_
 		ben_bike, 0) + isnull(
 		ben_walk, 0) +isnull(subtotal_ben_reliability, 0) + isnull(subtotal_ben_tt_commute, 0) + isnull(subtotal_ben_tt_noncommute, 0) 
 	+ isnull(subtotal_ben_freight, 0) + isnull(subtotal_ben_voc, 0),
-	cost_total_undiscounted = isnull(cost_capital, 0) + isnull(cost_om, 0) + isnull(cost_finance, 0),
+	--cost_total_undiscounted = isnull(cost_capital, 0) + isnull(cost_om, 0) + isnull(cost_finance, 0),
 	toll_rev_base_discounted = isnull(toll_rev_base, 0) / (
 		CASE 
 			WHEN power(1 + @rate_discount, period) = 0
@@ -18402,35 +18393,35 @@ SET benefit_emissions_discounted = isnull(subtotal_ben_emissions, 0) / (
 			ELSE power(1 + @rate_discount, period)
 			END
 		),
-	cost_capital_discounted = isnull(cost_capital, 0) / (
-		CASE 
-			WHEN power(1 + @rate_discount, period) = 0
-				THEN 1
-			ELSE power(1 + @rate_discount, period)
-			END
-		),
-	cost_om_discounted = isnull(cost_om, 0) / (
-		CASE 
-			WHEN power(1 + @rate_discount, period) = 0
-				THEN 1
-			ELSE power(1 + @rate_discount, period)
-			END
-		),
-	cost_finance_discounted = isnull(cost_finance, 0) / (
-		CASE 
-			WHEN power(1 + @rate_discount, period) = 0
-				THEN 1
-			ELSE power(1 + @rate_discount, period)
-			END
-		),
-	cost_total_discounted = isnull(cost_total_undiscounted, 0) / (
-		CASE 
-			WHEN power(1 + @rate_discount, period) = 0
-				THEN 1
-			ELSE power(1 + @rate_discount, period)
-			END
-		),
-	net_annual_undiscounted = isnull(benefit_total_undiscounted, 0) - isnull(cost_total_undiscounted, 0),
+	--cost_capital_discounted = isnull(cost_capital, 0) / (
+	--	CASE 
+	--		WHEN power(1 + @rate_discount, period) = 0
+	--			THEN 1
+	--		ELSE power(1 + @rate_discount, period)
+	--		END
+	--	),
+	--cost_om_discounted = isnull(cost_om, 0) / (
+	--	CASE 
+	--		WHEN power(1 + @rate_discount, period) = 0
+	--			THEN 1
+	--		ELSE power(1 + @rate_discount, period)
+	--		END
+	--	),
+	--cost_finance_discounted = isnull(cost_finance, 0) / (
+	--	CASE 
+	--		WHEN power(1 + @rate_discount, period) = 0
+	--			THEN 1
+	--		ELSE power(1 + @rate_discount, period)
+	--		END
+	--	),
+	--cost_total_discounted = isnull(cost_total_undiscounted, 0) / (
+	--	CASE 
+	--		WHEN power(1 + @rate_discount, period) = 0
+	--			THEN 1
+	--		ELSE power(1 + @rate_discount, period)
+	--		END
+	--	),
+	net_annual_undiscounted = isnull(benefit_total_undiscounted, 0) /*- isnull(cost_total_undiscounted, 0)*/,
 	-- coc detail
 	benefit_autos_owned_discounted_coc_race = isnull(ben_autos_owned_coc_race, 0) / (
 		CASE 
@@ -18563,7 +18554,7 @@ FROM multiyear_results
 WHERE analysis_id = @analysis_id;
 
 UPDATE multiyear_results
-SET net_annual_discounted = isnull(benefit_total_discounted, 0) - isnull(cost_total_discounted, 0)
+SET net_annual_discounted = isnull(benefit_total_discounted, 0) /*- isnull(cost_total_discounted, 0)*/
 FROM multiyear_results
 WHERE analysis_id = @analysis_id;
 
@@ -18673,7 +18664,7 @@ END
 -- compute npv, irr, bc ration, ....
 SELECT analysis_id,
 	sum(benefit_total_discounted) AS benefit_npv,
-	sum(cost_total_discounted) AS cost_npv,
+	--sum(cost_total_discounted) AS cost_npv,
 	@irr AS irr,
 	sum(net_annual_discounted) AS net_npv,
 	sum(toll_rev_base_discounted) AS toll_revenue_base_npv,
@@ -18689,7 +18680,7 @@ BEGIN TRANSACTION
 
 UPDATE multiyear_final_results
 SET benefit_npv = mr.benefit_npv,
-	cost_npv = mr.cost_npv,
+	--cost_npv = mr.cost_npv,
 	irr = @irr,
 	net_npv = mr.net_npv,
 	toll_revenue_base_npv = mr.toll_revenue_base_npv,
@@ -18705,7 +18696,7 @@ IF @@ROWCOUNT = 0
 	INSERT INTO multiyear_final_results (
 		analysis_id,
 		benefit_npv,
-		cost_npv,
+		--cost_npv,
 		irr,
 		net_npv,
 		toll_revenue_base_npv,
@@ -18715,7 +18706,7 @@ IF @@ROWCOUNT = 0
 		)
 	SELECT @analysis_id,
 		benefit_npv,
-		cost_npv,
+		--cost_npv,
 		irr,
 		net_npv,
 		toll_revenue_base_npv,
@@ -18725,15 +18716,15 @@ IF @@ROWCOUNT = 0
 	FROM #multiyear_final_results
 	WHERE analysis_id = @analysis_id;
 
-UPDATE multiyear_final_results
-SET bc_ratio = (
-		CASE 
-			WHEN cost_npv = 0
-				THEN - 999999999
-			ELSE benefit_npv / cost_npv
-			END
-		)
-WHERE analysis_id = @analysis_id;
+--UPDATE multiyear_final_results
+--SET bc_ratio = (
+--		CASE 
+--			WHEN cost_npv = 0
+--				THEN - 999999999
+--			ELSE benefit_npv / cost_npv
+--			END
+--		)
+--WHERE analysis_id = @analysis_id;
 
 COMMIT TRANSACTION
 

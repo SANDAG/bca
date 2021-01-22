@@ -30,11 +30,11 @@ sqlcmd -E -C -b -S %db_server% -d %db_name% -i %script_path%create_calculator_fu
 echo Creating multiyear tables
 sqlcmd -E -C -b -S %db_server% -d %db_name% -i %script_path%create_multiyear_tables.sql || goto :EOF
 
-echo Creating stored procedures
-sqlcmd -E -C -b -S %db_server% -d %db_name% -i %script_path%create_stored_procs.sql || goto :EOF
-
 echo Creating multiyear processor
 sqlcmd -E -C -b -S %db_server% -d %db_name% -i %script_path%create_multiyear_sp.sql || goto :EOF
+
+echo Creating stored procedures
+sqlcmd -E -C -b -S %db_server% -d %db_name% -i %script_path%create_stored_procs.sql || goto :EOF
 
 echo Creating clearing function
 sqlcmd -E -C -b -S %db_server% -d %db_name% -i %script_path%clear_analysis_sp.sql || goto :EOF

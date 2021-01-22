@@ -2,9 +2,9 @@
 CREATE TABLE [bca].[multiyear_final_results] (
 	[id]						integer IDENTITY(1,1) NOT NULL
 	,[analysis_id]				integer		NOT NULL
-	,[bc_ratio]					float		NULL
+	--,[bc_ratio]					float		NULL
 	,[benefit_npv]				float		NULL
-	,[cost_npv]					float		NULL
+	--,[cost_npv]					float		NULL
 	,[irr]						float		NULL
 	,[net_npv]					float		NULL
 	,[toll_revenue_base_npv]	float		NULL
