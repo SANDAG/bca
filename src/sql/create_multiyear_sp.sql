@@ -119,7 +119,7 @@ SET scenario_id_base		= sc.scenario_id_base
 	,base_rel_cost			= @annualization_factor * sc.base_rel_cost
 	,build_rel_cost			= @annualization_factor * sc.build_rel_cost
 	
-	-- these will end up NULL if no start_year run of demobraphics_processor
+	-- these will end up NULL if no start_year run of demographics_processor
 	,persons				= sc.persons
 	,persons_coc			= sc.persons_coc
 	,persons_coc_race		= sc.persons_coc_race
@@ -1053,7 +1053,7 @@ BEGIN
 				FROM #comparison_years_i1
 				) - (
 				SELECT TOP 1 ben_co
-				FROM #comparison_years_i0
+				FROM #comparison_years_start
 				)
 			) / (
 			CASE 
@@ -1089,7 +1089,7 @@ BEGIN
 				FROM #comparison_years_i1
 				) - (
 				SELECT TOP 1 ben_co2
-				FROM #comparison_years_i0
+				FROM #comparison_years_start
 				)
 			) / (
 			CASE 
@@ -1125,7 +1125,7 @@ BEGIN
 				FROM #comparison_years_i1
 				) - (
 				SELECT TOP 1 ben_nox
-				FROM #comparison_years_i0
+				FROM #comparison_years_start
 				)
 			) / (
 			CASE 
@@ -1161,7 +1161,7 @@ BEGIN
 				FROM #comparison_years_i1
 				) - (
 				SELECT TOP 1 ben_pm10
-				FROM #comparison_years_i0
+				FROM #comparison_years_start
 				)
 			) / (
 			CASE 
@@ -1197,7 +1197,7 @@ BEGIN
 				FROM #comparison_years_i1
 				) - (
 				SELECT TOP 1 ben_pm25
-				FROM #comparison_years_i0
+				FROM #comparison_years_start
 				)
 			) / (
 			CASE 
@@ -1233,7 +1233,7 @@ BEGIN
 				FROM #comparison_years_i1
 				) - (
 				SELECT TOP 1 ben_rogs
-				FROM #comparison_years_i0
+				FROM #comparison_years_start
 				)
 			) / (
 			CASE 
@@ -1269,7 +1269,7 @@ BEGIN
 				FROM #comparison_years_i1
 				) - (
 				SELECT TOP 1 ben_so2
-				FROM #comparison_years_i0
+				FROM #comparison_years_start
 				)
 			) / (
 			CASE 
@@ -1305,7 +1305,7 @@ BEGIN
 				FROM #comparison_years_i1
 				) - (
 				SELECT TOP 1 ben_autos_owned_coc
-				FROM #comparison_years_i0
+				FROM #comparison_years_start
 				)
 			) / (
 			CASE 
@@ -1341,7 +1341,7 @@ BEGIN
 				FROM #comparison_years_i1
 				) - (
 				SELECT TOP 1 ben_autos_owned
-				FROM #comparison_years_i0
+				FROM #comparison_years_start
 				)
 			) / (
 			CASE 
@@ -1377,7 +1377,7 @@ BEGIN
 				FROM #comparison_years_i1
 				) - (
 				SELECT TOP 1 ben_crashcost_fat
-				FROM #comparison_years_i0
+				FROM #comparison_years_start
 				)
 			) / (
 			CASE 
@@ -1413,7 +1413,7 @@ BEGIN
 				FROM #comparison_years_i1
 				) - (
 				SELECT TOP 1 ben_crashcost_inj
-				FROM #comparison_years_i0
+				FROM #comparison_years_start
 				)
 			) / (
 			CASE 
@@ -1449,7 +1449,7 @@ BEGIN
 				FROM #comparison_years_i1
 				) - (
 				SELECT TOP 1 ben_crashcost_pdo
-				FROM #comparison_years_i0
+				FROM #comparison_years_start
 				)
 			) / (
 			CASE 
@@ -1485,7 +1485,7 @@ BEGIN
 		--		FROM #comparison_years_i1
 		--		) - (
 		--		SELECT TOP 1 ben_persons_phys_active_coc
-		--		FROM #comparison_years_i0
+		--		FROM #comparison_years_start
 		--		)
 		--	) / (
 		--	CASE 
@@ -1521,7 +1521,7 @@ BEGIN
 		--		FROM #comparison_years_i1
 		--		) - (
 		--		SELECT TOP 1 ben_persons_phys_active
-		--		FROM #comparison_years_i0
+		--		FROM #comparison_years_start
 		--		)
 		--	) / (
 		--	CASE 
@@ -1558,7 +1558,7 @@ BEGIN
 				FROM #comparison_years_i1
 				) - (
 				SELECT TOP 1 ben_bike
-				FROM #comparison_years_i0
+				FROM #comparison_years_start
 				)
 			) / (
 			CASE 
@@ -1594,7 +1594,7 @@ BEGIN
 				FROM #comparison_years_i1
 				) - (
 				SELECT TOP 1 ben_bike_coc
-				FROM #comparison_years_i0
+				FROM #comparison_years_start
 				)
 			) / (
 			CASE 
@@ -1631,7 +1631,7 @@ BEGIN
 				FROM #comparison_years_i1
 				) - (
 				SELECT TOP 1 ben_walk
-				FROM #comparison_years_i0
+				FROM #comparison_years_start
 				)
 			) / (
 			CASE 
@@ -1667,7 +1667,7 @@ BEGIN
 				FROM #comparison_years_i1
 				) - (
 				SELECT TOP 1 ben_walk_coc
-				FROM #comparison_years_i0
+				FROM #comparison_years_start
 				)
 			) / (
 			CASE 
@@ -1707,7 +1707,7 @@ BEGIN
 				FROM #comparison_years_i1
 				) - (
 				SELECT TOP 1 ben_relcost_auto
-				FROM #comparison_years_i0
+				FROM #comparison_years_start
 				)
 			) / (
 			CASE 
@@ -1743,7 +1743,7 @@ BEGIN
 				FROM #comparison_years_i1
 				) - (
 				SELECT TOP 1 ben_relcost_truck_hvy
-				FROM #comparison_years_i0
+				FROM #comparison_years_start
 				)
 			) / (
 			CASE 
@@ -1779,7 +1779,7 @@ BEGIN
 				FROM #comparison_years_i1
 				) - (
 				SELECT TOP 1 ben_relcost_truck_lht
-				FROM #comparison_years_i0
+				FROM #comparison_years_start
 				)
 			) / (
 			CASE 
@@ -1815,7 +1815,7 @@ BEGIN
 				FROM #comparison_years_i1
 				) - (
 				SELECT TOP 1 ben_relcost_truck_med
-				FROM #comparison_years_i0
+				FROM #comparison_years_start
 				)
 			) / (
 			CASE 
@@ -1851,7 +1851,7 @@ BEGIN
 				FROM #comparison_years_i1
 				) - (
 				SELECT TOP 1 ben_tt_at_commute
-				FROM #comparison_years_i0
+				FROM #comparison_years_start
 				)
 			) / (
 			CASE 
@@ -1887,7 +1887,7 @@ BEGIN
 				FROM #comparison_years_i1
 				) - (
 				SELECT TOP 1 ben_tt_auto_commute
-				FROM #comparison_years_i0
+				FROM #comparison_years_start
 				)
 			) / (
 			CASE 
@@ -1923,7 +1923,7 @@ BEGIN
 				FROM #comparison_years_i1
 				) - (
 				SELECT TOP 1 ben_tt_transit_commute
-				FROM #comparison_years_i0
+				FROM #comparison_years_start
 				)
 			) / (
 			CASE 
@@ -1959,7 +1959,7 @@ BEGIN
 				FROM #comparison_years_i1
 				) - (
 				SELECT TOP 1 ben_tt_at_noncommute
-				FROM #comparison_years_i0
+				FROM #comparison_years_start
 				)
 			) / (
 			CASE 
@@ -1995,7 +1995,7 @@ BEGIN
 				FROM #comparison_years_i1
 				) - (
 				SELECT TOP 1 ben_tt_auto_noncommute
-				FROM #comparison_years_i0
+				FROM #comparison_years_start
 				)
 			) / (
 			CASE 
@@ -2031,7 +2031,7 @@ BEGIN
 				FROM #comparison_years_i1
 				) - (
 				SELECT TOP 1 ben_tt_transit_noncommute
-				FROM #comparison_years_i0
+				FROM #comparison_years_start
 				)
 			) / (
 			CASE 
@@ -2067,7 +2067,7 @@ BEGIN
 				FROM #comparison_years_i1
 				) - (
 				SELECT TOP 1 ben_tt_at_commute_coc
-				FROM #comparison_years_i0
+				FROM #comparison_years_start
 				)
 			) / (
 			CASE 
@@ -2103,7 +2103,7 @@ BEGIN
 				FROM #comparison_years_i1
 				) - (
 				SELECT TOP 1 ben_tt_auto_commute_coc
-				FROM #comparison_years_i0
+				FROM #comparison_years_start
 				)
 			) / (
 			CASE 
@@ -2139,7 +2139,7 @@ BEGIN
 				FROM #comparison_years_i1
 				) - (
 				SELECT TOP 1 ben_tt_transit_commute_coc
-				FROM #comparison_years_i0
+				FROM #comparison_years_start
 				)
 			) / (
 			CASE 
@@ -2175,7 +2175,7 @@ BEGIN
 				FROM #comparison_years_i1
 				) - (
 				SELECT TOP 1 ben_tt_at_noncommute_coc
-				FROM #comparison_years_i0
+				FROM #comparison_years_start
 				)
 			) / (
 			CASE 
@@ -2211,7 +2211,7 @@ BEGIN
 				FROM #comparison_years_i1
 				) - (
 				SELECT TOP 1 ben_tt_auto_noncommute_coc
-				FROM #comparison_years_i0
+				FROM #comparison_years_start
 				)
 			) / (
 			CASE 
@@ -2247,7 +2247,7 @@ BEGIN
 				FROM #comparison_years_i1
 				) - (
 				SELECT TOP 1 ben_tt_transit_noncommute_coc
-				FROM #comparison_years_i0
+				FROM #comparison_years_start
 				)
 			) / (
 			CASE 
@@ -2283,7 +2283,7 @@ BEGIN
 				FROM #comparison_years_i1
 				) - (
 				SELECT TOP 1 ben_tt_comm
-				FROM #comparison_years_i0
+				FROM #comparison_years_start
 				)
 			) / (
 			CASE 
@@ -2319,7 +2319,7 @@ BEGIN
 				FROM #comparison_years_i1
 				) - (
 				SELECT TOP 1 ben_tt_truck
-				FROM #comparison_years_i0
+				FROM #comparison_years_start
 				)
 			) / (
 			CASE 
@@ -2355,7 +2355,7 @@ BEGIN
 				FROM #comparison_years_i1
 				) - (
 				SELECT TOP 1 ben_voc_auto
-				FROM #comparison_years_i0
+				FROM #comparison_years_start
 				)
 			) / (
 			CASE 
@@ -2391,7 +2391,7 @@ BEGIN
 				FROM #comparison_years_i1
 				) - (
 				SELECT TOP 1 ben_voc_truck_lht
-				FROM #comparison_years_i0
+				FROM #comparison_years_start
 				)
 			) / (
 			CASE 
@@ -2427,7 +2427,7 @@ BEGIN
 				FROM #comparison_years_i1
 				) - (
 				SELECT TOP 1 ben_voc_truck_med
-				FROM #comparison_years_i0
+				FROM #comparison_years_start
 				)
 			) / (
 			CASE 
@@ -2463,7 +2463,7 @@ BEGIN
 				FROM #comparison_years_i1
 				) - (
 				SELECT TOP 1 ben_voc_truck_hvy
-				FROM #comparison_years_i0
+				FROM #comparison_years_start
 				)
 			) / (
 			CASE 
@@ -2499,7 +2499,7 @@ BEGIN
 				FROM #comparison_years_i1
 				) - (
 				SELECT TOP 1 toll_rev_base
-				FROM #comparison_years_i0
+				FROM #comparison_years_start
 				)
 			) / (
 			CASE 
@@ -2509,7 +2509,7 @@ BEGIN
 							FROM #comparison_years_i1
 							) - (
 							SELECT TOP 1 period
-							FROM #comparison_years_i0
+							FROM #comparison_years_start
 							)
 						) = 0
 					THEN 1
@@ -2519,7 +2519,7 @@ BEGIN
 							FROM #comparison_years_i1
 							) - (
 							SELECT TOP 1 period
-							FROM #comparison_years_i0
+							FROM #comparison_years_start
 							)
 						)
 				END
@@ -2535,7 +2535,7 @@ BEGIN
 				FROM #comparison_years_i1
 				) - (
 				SELECT TOP 1 toll_rev_build
-				FROM #comparison_years_i0
+				FROM #comparison_years_start
 				)
 			) / (
 			CASE 
@@ -2571,7 +2571,7 @@ BEGIN
 				FROM #comparison_years_i1
 				) - (
 				SELECT TOP 1 fare_rev_base
-				FROM #comparison_years_i0
+				FROM #comparison_years_start
 				)
 			) / (
 			CASE 
@@ -2581,7 +2581,7 @@ BEGIN
 							FROM #comparison_years_i1
 							) - (
 							SELECT TOP 1 period
-							FROM #comparison_years_i0
+							FROM #comparison_years_start
 							)
 						) = 0
 					THEN 1
@@ -2591,7 +2591,7 @@ BEGIN
 							FROM #comparison_years_i1
 							) - (
 							SELECT TOP 1 period
-							FROM #comparison_years_i0
+							FROM #comparison_years_start
 							)
 						)
 				END
@@ -2607,7 +2607,7 @@ BEGIN
 				FROM #comparison_years_i1
 				) - (
 				SELECT TOP 1 fare_rev_build
-				FROM #comparison_years_i0
+				FROM #comparison_years_start
 				)
 			) / (
 			CASE 
@@ -2644,7 +2644,7 @@ BEGIN
 				FROM #comparison_years_i1
 				) - (
 				SELECT TOP 1 base_tt_person
-				FROM #comparison_years_i0
+				FROM #comparison_years_start
 				)
 			) / (
 			CASE 
@@ -2654,7 +2654,7 @@ BEGIN
 							FROM #comparison_years_i1
 							) - (
 							SELECT TOP 1 period
-							FROM #comparison_years_i0
+							FROM #comparison_years_start
 							)
 						) = 0
 					THEN 1
@@ -2664,7 +2664,7 @@ BEGIN
 							FROM #comparison_years_i1
 							) - (
 							SELECT TOP 1 period
-							FROM #comparison_years_i0
+							FROM #comparison_years_start
 							)
 						)
 				END
@@ -2680,7 +2680,7 @@ BEGIN
 				FROM #comparison_years_i1
 				) - (
 				SELECT TOP 1 build_tt_person
-				FROM #comparison_years_i0
+				FROM #comparison_years_start
 				)
 			) / (
 			CASE 
@@ -2716,7 +2716,7 @@ BEGIN
 				FROM #comparison_years_i1
 				) - (
 				SELECT TOP 1 base_tt_truck_comm
-				FROM #comparison_years_i0
+				FROM #comparison_years_start
 				)
 			) / (
 			CASE 
@@ -2726,7 +2726,7 @@ BEGIN
 							FROM #comparison_years_i1
 							) - (
 							SELECT TOP 1 period
-							FROM #comparison_years_i0
+							FROM #comparison_years_start
 							)
 						) = 0
 					THEN 1
@@ -2736,7 +2736,7 @@ BEGIN
 							FROM #comparison_years_i1
 							) - (
 							SELECT TOP 1 period
-							FROM #comparison_years_i0
+							FROM #comparison_years_start
 							)
 						)
 				END
@@ -2745,14 +2745,14 @@ BEGIN
 			FROM multiyear_results
 			WHERE analysis_id = @analysis_id
 				AND period = mr.period - 1
-			), --added by JC 2010.10.20
+			),
 		build_tt_truck_comm = (
 			(
 				SELECT TOP 1 build_tt_truck_comm
 				FROM #comparison_years_i1
 				) - (
 				SELECT TOP 1 build_tt_truck_comm
-				FROM #comparison_years_i0
+				FROM #comparison_years_start
 				)
 			) / (
 			CASE 
@@ -2781,14 +2781,14 @@ BEGIN
 			FROM multiyear_results
 			WHERE analysis_id = @analysis_id
 				AND period = mr.period - 1
-			), --added by JC 2010.10.20
+			),
 		ratio_tt_person = (
 			(
 				SELECT TOP 1 ratio_tt_person
 				FROM #comparison_years_i1
 				) - (
 				SELECT TOP 1 ratio_tt_person
-				FROM #comparison_years_i0
+				FROM #comparison_years_start
 				)
 			) / (
 			CASE 
@@ -2798,7 +2798,7 @@ BEGIN
 							FROM #comparison_years_i1
 							) - (
 							SELECT TOP 1 period
-							FROM #comparison_years_i0
+							FROM #comparison_years_start
 							)
 						) = 0
 					THEN 1
@@ -2808,7 +2808,7 @@ BEGIN
 							FROM #comparison_years_i1
 							) - (
 							SELECT TOP 1 period
-							FROM #comparison_years_i0
+							FROM #comparison_years_start
 							)
 						)
 				END
@@ -2824,7 +2824,7 @@ BEGIN
 				FROM #comparison_years_i1
 				) - (
 				SELECT TOP 1 ratio_tt_truck_comm
-				FROM #comparison_years_i0
+				FROM #comparison_years_start
 				)
 			) / (
 			CASE 
@@ -2834,7 +2834,7 @@ BEGIN
 							FROM #comparison_years_i1
 							) - (
 							SELECT TOP 1 period
-							FROM #comparison_years_i0
+							FROM #comparison_years_start
 							)
 						) = 0
 					THEN 1
@@ -2844,7 +2844,7 @@ BEGIN
 							FROM #comparison_years_i1
 							) - (
 							SELECT TOP 1 period
-							FROM #comparison_years_i0
+							FROM #comparison_years_start
 							)
 						)
 				END
@@ -2860,7 +2860,7 @@ BEGIN
 				FROM #comparison_years_i1
 				) - (
 				SELECT TOP 1 base_rel_cost
-				FROM #comparison_years_i0
+				FROM #comparison_years_start
 				)
 			) / (
 			CASE 
@@ -2870,7 +2870,7 @@ BEGIN
 							FROM #comparison_years_i1
 							) - (
 							SELECT TOP 1 period
-							FROM #comparison_years_i0
+							FROM #comparison_years_start
 							)
 						) = 0
 					THEN 1
@@ -2880,7 +2880,7 @@ BEGIN
 							FROM #comparison_years_i1
 							) - (
 							SELECT TOP 1 period
-							FROM #comparison_years_i0
+							FROM #comparison_years_start
 							)
 						)
 				END
@@ -2896,7 +2896,7 @@ BEGIN
 				FROM #comparison_years_i1
 				) - (
 				SELECT TOP 1 build_rel_cost
-				FROM #comparison_years_i0
+				FROM #comparison_years_start
 				)
 			) / (
 			CASE 
@@ -2933,7 +2933,7 @@ BEGIN
 				FROM #comparison_years_i1
 				) - (
 				SELECT TOP 1 ben_autos_owned_coc_race
-				FROM #comparison_years_i0
+				FROM #comparison_years_start
 				)
 			) / (
 			CASE 
@@ -2969,7 +2969,7 @@ BEGIN
 		--		FROM #comparison_years_i1
 		--		) - (
 		--		SELECT TOP 1 ben_persons_phys_active_coc_race
-		--		FROM #comparison_years_i0
+		--		FROM #comparison_years_start
 		--		)
 		--	) / (
 		--	CASE 
@@ -3006,7 +3006,7 @@ BEGIN
 				FROM #comparison_years_i1
 				) - (
 				SELECT TOP 1 ben_bike_coc_race
-				FROM #comparison_years_i0
+				FROM #comparison_years_start
 				)
 			) / (
 			CASE 
@@ -3043,7 +3043,7 @@ BEGIN
 				FROM #comparison_years_i1
 				) - (
 				SELECT TOP 1 ben_walk_coc_race
-				FROM #comparison_years_i0
+				FROM #comparison_years_start
 				)
 			) / (
 			CASE 
@@ -3081,7 +3081,7 @@ BEGIN
 				FROM #comparison_years_i1
 				) - (
 				SELECT TOP 1 ben_tt_at_commute_coc_race
-				FROM #comparison_years_i0
+				FROM #comparison_years_start
 				)
 			) / (
 			CASE 
@@ -3117,7 +3117,7 @@ BEGIN
 				FROM #comparison_years_i1
 				) - (
 				SELECT TOP 1 ben_tt_auto_commute_coc_race
-				FROM #comparison_years_i0
+				FROM #comparison_years_start
 				)
 			) / (
 			CASE 
@@ -3153,7 +3153,7 @@ BEGIN
 				FROM #comparison_years_i1
 				) - (
 				SELECT TOP 1 ben_tt_transit_commute_coc_race
-				FROM #comparison_years_i0
+				FROM #comparison_years_start
 				)
 			) / (
 			CASE 
@@ -3189,7 +3189,7 @@ BEGIN
 				FROM #comparison_years_i1
 				) - (
 				SELECT TOP 1 ben_tt_at_noncommute_coc_race
-				FROM #comparison_years_i0
+				FROM #comparison_years_start
 				)
 			) / (
 			CASE 
@@ -3225,7 +3225,7 @@ BEGIN
 				FROM #comparison_years_i1
 				) - (
 				SELECT TOP 1 ben_tt_auto_noncommute_coc_race
-				FROM #comparison_years_i0
+				FROM #comparison_years_start
 				)
 			) / (
 			CASE 
@@ -3261,7 +3261,7 @@ BEGIN
 				FROM #comparison_years_i1
 				) - (
 				SELECT TOP 1 ben_tt_transit_noncommute_coc_race
-				FROM #comparison_years_i0
+				FROM #comparison_years_start
 				)
 			) / (
 			CASE 
@@ -3297,7 +3297,7 @@ BEGIN
 				FROM #comparison_years_i1
 				) - (
 				SELECT TOP 1 ben_autos_owned_coc_age
-				FROM #comparison_years_i0
+				FROM #comparison_years_start
 				)
 			) / (
 			CASE 
@@ -3333,7 +3333,7 @@ BEGIN
 		--		FROM #comparison_years_i1
 		--		) - (
 		--		SELECT TOP 1 ben_persons_phys_active_coc_age
-		--		FROM #comparison_years_i0
+		--		FROM #comparison_years_start
 		--		)
 		--	) / (
 		--	CASE 
@@ -3370,7 +3370,7 @@ BEGIN
 				FROM #comparison_years_i1
 				) - (
 				SELECT TOP 1 ben_bike_coc_age
-				FROM #comparison_years_i0
+				FROM #comparison_years_start
 				)
 			) / (
 			CASE 
@@ -3406,7 +3406,7 @@ BEGIN
 				FROM #comparison_years_i1
 				) - (
 				SELECT TOP 1 ben_walk_coc_age
-				FROM #comparison_years_i0
+				FROM #comparison_years_start
 				)
 			) / (
 			CASE 
@@ -3443,7 +3443,7 @@ BEGIN
 				FROM #comparison_years_i1
 				) - (
 				SELECT TOP 1 ben_tt_at_commute_coc_age
-				FROM #comparison_years_i0
+				FROM #comparison_years_start
 				)
 			) / (
 			CASE 
@@ -3479,7 +3479,7 @@ BEGIN
 				FROM #comparison_years_i1
 				) - (
 				SELECT TOP 1 ben_tt_auto_commute_coc_age
-				FROM #comparison_years_i0
+				FROM #comparison_years_start
 				)
 			) / (
 			CASE 
@@ -3515,7 +3515,7 @@ BEGIN
 				FROM #comparison_years_i1
 				) - (
 				SELECT TOP 1 ben_tt_transit_commute_coc_age
-				FROM #comparison_years_i0
+				FROM #comparison_years_start
 				)
 			) / (
 			CASE 
@@ -3551,7 +3551,7 @@ BEGIN
 				FROM #comparison_years_i1
 				) - (
 				SELECT TOP 1 ben_tt_at_noncommute_coc_age
-				FROM #comparison_years_i0
+				FROM #comparison_years_start
 				)
 			) / (
 			CASE 
@@ -3587,7 +3587,7 @@ BEGIN
 				FROM #comparison_years_i1
 				) - (
 				SELECT TOP 1 ben_tt_auto_noncommute_coc_age
-				FROM #comparison_years_i0
+				FROM #comparison_years_start
 				)
 			) / (
 			CASE 
@@ -3623,7 +3623,7 @@ BEGIN
 				FROM #comparison_years_i1
 				) - (
 				SELECT TOP 1 ben_tt_transit_noncommute_coc_age
-				FROM #comparison_years_i0
+				FROM #comparison_years_start
 				)
 			) / (
 			CASE 
@@ -3659,7 +3659,7 @@ BEGIN
 				FROM #comparison_years_i1
 				) - (
 				SELECT TOP 1 ben_autos_owned_coc_poverty
-				FROM #comparison_years_i0
+				FROM #comparison_years_start
 				)
 			) / (
 			CASE 
@@ -3695,7 +3695,7 @@ BEGIN
 		--		FROM #comparison_years_i1
 		--		) - (
 		--		SELECT TOP 1 ben_persons_phys_active_coc_poverty
-		--		FROM #comparison_years_i0
+		--		FROM #comparison_years_start
 		--		)
 		--	) / (
 		--	CASE 
@@ -3732,7 +3732,7 @@ BEGIN
 				FROM #comparison_years_i1
 				) - (
 				SELECT TOP 1 ben_bike_coc_poverty
-				FROM #comparison_years_i0
+				FROM #comparison_years_start
 				)
 			) / (
 			CASE 
@@ -3768,7 +3768,7 @@ BEGIN
 				FROM #comparison_years_i1
 				) - (
 				SELECT TOP 1 ben_walk_coc_poverty
-				FROM #comparison_years_i0
+				FROM #comparison_years_start
 				)
 			) / (
 			CASE 
@@ -3805,7 +3805,7 @@ BEGIN
 				FROM #comparison_years_i1
 				) - (
 				SELECT TOP 1 ben_tt_at_commute_coc_poverty
-				FROM #comparison_years_i0
+				FROM #comparison_years_start
 				)
 			) / (
 			CASE 
@@ -3841,7 +3841,7 @@ BEGIN
 				FROM #comparison_years_i1
 				) - (
 				SELECT TOP 1 ben_tt_auto_commute_coc_poverty
-				FROM #comparison_years_i0
+				FROM #comparison_years_start
 				)
 			) / (
 			CASE 
@@ -3877,7 +3877,7 @@ BEGIN
 				FROM #comparison_years_i1
 				) - (
 				SELECT TOP 1 ben_tt_transit_commute_coc_poverty
-				FROM #comparison_years_i0
+				FROM #comparison_years_start
 				)
 			) / (
 			CASE 
@@ -3913,7 +3913,7 @@ BEGIN
 				FROM #comparison_years_i1
 				) - (
 				SELECT TOP 1 ben_tt_at_noncommute_coc_poverty
-				FROM #comparison_years_i0
+				FROM #comparison_years_start
 				)
 			) / (
 			CASE 
@@ -3949,7 +3949,7 @@ BEGIN
 				FROM #comparison_years_i1
 				) - (
 				SELECT TOP 1 ben_tt_auto_noncommute_coc_poverty
-				FROM #comparison_years_i0
+				FROM #comparison_years_start
 				)
 			) / (
 			CASE 
@@ -3985,7 +3985,7 @@ BEGIN
 				FROM #comparison_years_i1
 				) - (
 				SELECT TOP 1 ben_tt_transit_noncommute_coc_poverty
-				FROM #comparison_years_i0
+				FROM #comparison_years_start
 				)
 			) / (
 			CASE 
@@ -4021,7 +4021,7 @@ BEGIN
 				FROM #comparison_years_i1
 				) - (
 				SELECT TOP 1 persons
-				FROM #comparison_years_i0
+				FROM #comparison_years_start
 				)
 			) / (
 			CASE 
@@ -4031,7 +4031,7 @@ BEGIN
 							FROM #comparison_years_i1
 							) - (
 							SELECT TOP 1 period
-							FROM #comparison_years_i0
+							FROM #comparison_years_start
 							)
 						) = 0
 					THEN 1
@@ -4041,7 +4041,7 @@ BEGIN
 							FROM #comparison_years_i1
 							) - (
 							SELECT TOP 1 period
-							FROM #comparison_years_i0
+							FROM #comparison_years_start
 							)
 						)
 				END
@@ -4057,7 +4057,7 @@ BEGIN
 				FROM #comparison_years_i1
 				) - (
 				SELECT TOP 1 persons_coc
-				FROM #comparison_years_i0
+				FROM #comparison_years_start
 				)
 			) / (
 			CASE 
@@ -4067,7 +4067,7 @@ BEGIN
 							FROM #comparison_years_i1
 							) - (
 							SELECT TOP 1 period
-							FROM #comparison_years_i0
+							FROM #comparison_years_start
 							)
 						) = 0
 					THEN 1
@@ -4077,7 +4077,7 @@ BEGIN
 							FROM #comparison_years_i1
 							) - (
 							SELECT TOP 1 period
-							FROM #comparison_years_i0
+							FROM #comparison_years_start
 							)
 						)
 				END
@@ -4093,7 +4093,7 @@ BEGIN
 				FROM #comparison_years_i1
 				) - (
 				SELECT TOP 1 persons_coc_race
-				FROM #comparison_years_i0
+				FROM #comparison_years_start
 				)
 			) / (
 			CASE 
@@ -4103,7 +4103,7 @@ BEGIN
 							FROM #comparison_years_i1
 							) - (
 							SELECT TOP 1 period
-							FROM #comparison_years_i0
+							FROM #comparison_years_start
 							)
 						) = 0
 					THEN 1
@@ -4113,7 +4113,7 @@ BEGIN
 							FROM #comparison_years_i1
 							) - (
 							SELECT TOP 1 period
-							FROM #comparison_years_i0
+							FROM #comparison_years_start
 							)
 						)
 				END
@@ -4129,7 +4129,7 @@ BEGIN
 				FROM #comparison_years_i1
 				) - (
 				SELECT TOP 1 persons_coc_age
-				FROM #comparison_years_i0
+				FROM #comparison_years_start
 				)
 			) / (
 			CASE 
@@ -4139,7 +4139,7 @@ BEGIN
 							FROM #comparison_years_i1
 							) - (
 							SELECT TOP 1 period
-							FROM #comparison_years_i0
+							FROM #comparison_years_start
 							)
 						) = 0
 					THEN 1
@@ -4149,7 +4149,7 @@ BEGIN
 							FROM #comparison_years_i1
 							) - (
 							SELECT TOP 1 period
-							FROM #comparison_years_i0
+							FROM #comparison_years_start
 							)
 						)
 				END
@@ -4165,7 +4165,7 @@ BEGIN
 				FROM #comparison_years_i1
 				) - (
 				SELECT TOP 1 persons_coc_poverty
-				FROM #comparison_years_i0
+				FROM #comparison_years_start
 				)
 			) / (
 			CASE 
@@ -4175,7 +4175,7 @@ BEGIN
 							FROM #comparison_years_i1
 							) - (
 							SELECT TOP 1 period
-							FROM #comparison_years_i0
+							FROM #comparison_years_start
 							)
 						) = 0
 					THEN 1
@@ -4185,7 +4185,7 @@ BEGIN
 							FROM #comparison_years_i1
 							) - (
 							SELECT TOP 1 period
-							FROM #comparison_years_i0
+							FROM #comparison_years_start
 							)
 						)
 				END
